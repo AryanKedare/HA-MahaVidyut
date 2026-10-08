@@ -1,0 +1,22 @@
+{
+  "title": "AESL Smart Meter (Unofficial)",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add your AESL smart meter",
+        "description": "Enter your own AESL consumer number (CA number). Meter ID and phase come from the portal's verified user details; they are optional for consumption history.",
+        "data": {
+          "login_id": "Consumer / CA number",
+          "meter_id": "Internal meter ID (MID, 0 if unknown)",
+          "phase": "Meter phase"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Unable to retrieve meter history. Check portal availability and your consumer details. Login or a portal-side change may be required."
+    },
+    "abort": {
+      "already_configured": "This consumer number is already configured"
+    }
+  }
+}
