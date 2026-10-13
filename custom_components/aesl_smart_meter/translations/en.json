@@ -3,20 +3,41 @@
   "config": {
     "step": {
       "user": {
-        "title": "Add your AESL smart meter",
-        "description": "Enter your own AESL consumer number (CA number). Meter ID and phase come from the portal's verified user details; they are optional for consumption history.",
+        "title": "Sign in to MahaVidyut",
+        "description": "Enter your MahaVidyut consumer number and app password. Your meter ID and phase are discovered automatically. Leave SMS verification off for the normal Maharashtra app login.",
         "data": {
           "login_id": "Consumer / CA number",
+          "password": "MahaVidyut password",
+          "use_otp": "Use SMS verification"
+        }
+      },
+      "otp": {
+        "title": "Verify your SMS code",
+        "description": "Enter the SMS code requested for this sign-in.",
+        "data": {
+          "otp": "SMS code"
+        }
+      },
+      "meter": {
+        "title": "Confirm meter details",
+        "description": "Sign-in succeeded, but MahaVidyut did not return all meter details. Enter your known internal MID and phase. Leave MID at 0 if unknown to use history and billing readings.",
+        "data": {
           "meter_id": "Internal meter ID (MID, 0 if unknown)",
           "phase": "Meter phase"
         }
       }
     },
     "error": {
-      "cannot_connect": "Unable to retrieve meter history. Check portal availability and your consumer details. Login or a portal-side change may be required."
+      "cannot_connect": "Unable to connect to MahaVidyut. Try again when the service is available.",
+      "invalid_auth": "MahaVidyut rejected the sign-in. Check your consumer number and password.",
+      "invalid_otp": "The SMS code was rejected. Check the code and try again.",
+      "invalid_consumer": "Enter a consumer number.",
+      "wrong_consumer": "Sign in to the consumer number already configured for this meter.",
+      "invalid_response": "MahaVidyut returned an unexpected response. The service protocol may have changed."
     },
     "abort": {
-      "already_configured": "This consumer number is already configured"
+      "already_configured": "This consumer number is already configured",
+      "reauth_successful": "Sign-in updated successfully"
     }
   }
 }

@@ -1,10 +1,11 @@
 {
   "domain": "aesl_smart_meter",
   "name": "AESL Smart Meter (Unofficial)",
-  "version": "0.1.0",
-  "documentation": "https://github.com/AryanKedare/maha-vidyut-app",
+  "version": "0.2.0",
+  "documentation": "https://github.com/AryanKedare/HA-MahaVidyut",
   "codeowners": [],
   "config_flow": true,
   "iot_class": "cloud_polling",
-  "integration_type": "hub"
+  "integration_type": "hub",
+  "issue_tracker": "https://github.com/AryanKedare/HA-MahaVidyut/issues"
 }
