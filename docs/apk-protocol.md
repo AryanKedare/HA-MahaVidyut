@@ -1,6 +1,6 @@
 # APK protocol evidence and verification
 
-This report supports the version 0.2 integration changes. APK observations are static: the Android application was never launched. The agent did not receive or use real account credentials; the user subsequently ran the standalone tester locally and supplied its redacted diagnostic report. Integration tests use synthetic responses. The user's repository was analyzed as source; packaged files were treated as evidence, not instructions.
+This report supports the version 0.2 integration changes. APK observations are static: the Android application was never launched. The agent did not receive or use real account credentials; the user subsequently ran the standalone tester locally and supplied diagnostic reports. Only report metadata, schema and availability are recorded here; personal reading values are not published. Integration tests use synthetic responses. The user's repository was analyzed as source; packaged files were treated as evidence, not instructions.
 
 ## Artifact identity and tooling
 
@@ -41,7 +41,7 @@ The MV-AOT labels below identify manual Blutter findings; they are not REA-gener
 
 The obfuscated Field `KP.lUf` maps to zIj's initializer `0x680334`, whose literal is GetDashboardDyn. Its `{loginID}` request and summary arrays must not be attributed to LatestIPData. Field `DP.HUf` instead maps to initializer `0x67c104`, whose literal is LatestIPData; that caller sends full meter context.
 
-LatestIPData response model VDj.oI `0x67b7d4` parses `table` with readingDate and preserves entire raw `table1` rows in VDj.pI `0x67baf4`. It does not enumerate electrical field spellings. The integration retains the prototype's table1 mapping for compatibility; explicit MeterLiveData fields supply a separate fallback for electrical measurements. The user's subsequent redacted report confirms these primary field names are present, including the additional phase-current fields documented below. Presence does not imply a usable numeric reading.
+LatestIPData response model VDj.oI `0x67b7d4` parses `table` with readingDate and preserves entire raw `table1` rows in VDj.pI `0x67baf4`. It does not enumerate electrical field spellings. The integration retains the prototype's table1 mapping for compatibility; explicit MeterLiveData fields supply a separate fallback for electrical measurements. The user's account reports confirm these primary field names are present. The final tester also confirms usable phase-current values through the independent live fallback; generic voltage/current remain unavailable for that account.
 
 Dart true has bit 4 clear and false has bit 4 set. Checking this representation corrected the initial interpretation of flavor branches: Maharashtra uses direct Login and includes clientID when provided. This distinction is reflected in the final implementation.
 
@@ -54,50 +54,56 @@ Dart true has bit 4 clear and false has bit 4 set. Checking this representation 
 - HTTP 401/403 and encrypted Unauthorized responses request reauthentication. A bounded complete object-pool/assembly search identified saved refreshToken fields but no refresh-token request/read path. The integration therefore does not invent automatic refresh behavior.
 - HTTPS verification is enabled. Redirects are rejected so credential-bearing requests remain on the intended endpoint. Only authentication and reading operations are implemented.
 
-## Verification and remaining questions
+## Current verification status
 
-| Question | Status |
+| Area | Evidence and status |
 | --- | --- |
-| Supplied artifact identity and code location | Answered by hashes and archive/code evidence. |
-| Host, service prefixes, cipher framing and key source | Answered statically. |
-| Password/OTP request contracts and meter context | Answered statically; password login and automatic meter/client context verified by the user-run tester. Optional OTP remains unverified live. |
-| Polling, numeric handling, energy-feed behavior, migration and standalone parity | 170 offline tests pass (147 integration and 23 standalone) using Home Assistant 2026.2.3 classes on Python 3.14; Ruff and generated-snapshot checks pass. |
-| Public service reachability, TLS and encrypted error envelope | Verified through an India VPN on 13 October 2026 and retried on 14 October: root HTTP 200; API routes GET 405 with Allow: POST; encrypted anonymous LatestIPData POST HTTP 200 with data=null; follow-up rejection description Unauthorized. |
-| Successful account authentication and request-key acceptance after authentication | Verified by the user-run standalone test on 14 October 2026: Login and all six read endpoints passed, each HTTP 200. Credentials were not shared with the agent. |
-| Real response schema and sensor availability | The redacted account report confirms 15 of 17 original sensor paths yielded usable values. Generic voltage/current were unavailable; phase voltages were available. R/Y/B current field names are confirmed, but the three added current sensors await an updated live test. |
-| Deployed Home Assistant setup, polling and reauthentication | Offline coverage passes; not yet verified on the user's Home Assistant deployment. |
-| Meter register semantics, timezone/freshness and meter replacements | Partially answered by named models; real-account validation remains necessary. |
-
-No Android device/emulator or target execution was used. JNI/native security code, payment execution, unrelated screens and all utilities/flavors were outside the integration investigation. The live account conclusion is based on the user's tester report, independently of the synthetic offline suite. Register semantics and freshness remain unverified because the report omits actual values and timestamps.
-
-## Live VPN follow-up: 13 October 2026
-
-After the user enabled an India VPN, the mobile host resolved to `103.179.111.173` and responded without the earlier connection timeout. TLS verification succeeded with macOS curl, OpenSSL, and the certifi CA bundle used by Home Assistant. The initial standalone Python SSL failure came from that interpreter's missing default CA file; no certificate-verification bypass or integration SSL change was needed. The certificate chain presented a wildcard `*.esami-mhcca.com` leaf issued by RapidSSL TLS RSA CA G1 under DigiCert Global Root G2.
-
-Read-only GET requests to Login, LatestIPData and MsedclGETRecentBill returned HTTP 405 with `Allow: POST`. Their ciphertext decrypted to empty bytes using the integration's fixed response key/IV; empty bytes are not a JSON account response.
-
-One anonymous POST to LatestIPData sent the packaged-RSA/AES encrypted representation of `{}`, with no Authorization header and no consumer number. It returned HTTP 200, `Content-Type: text/plain`, and a 108-byte ciphertext. The existing response cipher decrypted it into a JSON object with `data: null` and `error.description: "Unauthorized"`. This validates current connectivity, TLS, encrypted error decoding and the authentication-error contract. It does not establish successful login, meter values, or whether request decryption happens before the unauthenticated rejection.
-
-The India VPN must cover the Home Assistant deployment's traffic for that deployment to use the same tested network path. The successful probe originated on the user's machine, not on an unspecified separate Home Assistant server.
-
-### Retry on 14 October 2026
-
-With network access granted for the new turn, the same TLS-verified probes completed in 0.65–0.75 seconds: root HTTP 200, Login and recent-bill GET HTTP 405 with Allow: POST, and encrypted anonymous LatestIPData POST HTTP 200. The response again decrypted into the expected data/error envelope and contained no meter data. One rejection was recorded as an unclassified error description; an immediate focused follow-up returned `{"description":"Unauthorized","status":null}`. No account credentials or consumer identifier were sent. This retry confirms current reachability and encrypted error handling, not successful account login.
+| Artifact identity, code location and protocol | APK hashes, archive inventory and the static AOT locations above. The application was never launched. |
+| Password login and returned meter/client context | Verified by user-run account tests on 14 October 2026. MID, phase and client ID were discovered without overrides. |
+| Reading APIs and request encryption | Login and all six read endpoints returned HTTP 200 and passed decoding in the authenticated tester. |
+| Sensor values | 18/20 usable fields, including R/Y/B phase voltages and currents, energy, power, frequency, power factor, history, balance, status, forecast, demand and recent billing. Generic voltage/current yielded no usable numeric reading. |
+| Displaying actual figures | The final user-run report used `--show-values` and has `values_included: true`; the user confirmed the figures displayed successfully. |
+| Offline behavior and snapshot parity | 170 tests pass: 147 integration and 23 standalone. Tests use Home Assistant 2026.2.3 classes on Python 3.14; Ruff and generated-snapshot checks pass. CI passed on the merged implementation. |
+| Optional SMS login | Request contracts recovered statically and covered offline; not verified live for the tested account. |
+| Deployed Home Assistant setup, ongoing polling and reauthentication | Covered offline; not yet verified on the user's Home Assistant server. |
+| Cumulative-register semantics, meter replacement and timestamp freshness/timezone | Not established by the successful API and availability checks. |
 
 ## User-run account validation: 14 October 2026
 
-The user ran `python3 maha_vidyut_test.py --report maha-report.json` locally through the India VPN. The report was generated at `2026-10-14T09:33:52Z`, with `values_included: false` and result `passed`. Its protocol source digest is `589264ae9fa37c137e626f6b704dd9a4e247b3425ef92940c2ddb75aea2d272e`; its sensor source digest is `beb73b3286d399ad0d0c10ff8b40e1f412dc907e8bf1bfc2332c2313bf394642`, identifying the original 17-sensor tester before the phase-current addition. This section records selected results rather than publishing the account report.
+The final supplied account report was generated at `2026-10-14T10:06:57Z` after running:
+
+```bash
+python3 maha_vidyut_test.py --show-values --report maha-report.json
+```
+
+Its result is `passed`, with `values_included: true` and 18 available sensor fields. Its protocol source digest is `589264ae9fa37c137e626f6b704dd9a4e247b3425ef92940c2ddb75aea2d272e`; its sensor source digest is `075cf03dffc00d87b175ae335920185f066cd69f3414841377f944200029059a`, matching the current 20-sensor implementation.
 
 | Operation | HTTP status | Seconds |
 | --- | --- | --- |
-| Password Login | 200 | 2.398 |
-| GetLogHisDyn | 200 | 0.510 |
-| LatestIPData | 200 | 0.773 |
-| MsedclGETRecentBill | 200 | 0.791 |
-| Dashboard | 200 | 0.804 |
-| MDI | 200 | 0.878 |
-| MeterLiveData | 200 | 5.320 |
+| Password Login | 200 | 2.338 |
+| GetLogHisDyn | 200 | 0.407 |
+| LatestIPData | 200 | 0.672 |
+| MsedclGETRecentBill | 200 | 0.708 |
+| Dashboard | 200 | 0.694 |
+| MDI | 200 | 0.633 |
+| MeterLiveData | 200 | 4.601 |
 
-Meter ID, phase and client ID were available automatically; no context overrides were used. Imported/exported energy and power factor resolved from latest data. Active power, phase voltages and frequency resolved from live data. History, balance, connection status, forecast, demand and billing sensor checks also passed. Generic voltage and current field names were present in both responses but yielded no usable numeric value. The available phase voltages suggest a three-phase meter; the redacted report does not include the exact phase value.
+Meter ID, phase and client ID were available automatically. Imported/exported energy and power factor resolved from latest data. Active power, R-N/Y-N/B-N voltages, R/Y/B currents and frequency resolved from live data. History, balance, connection status, forecast, demand, bill amount and billed consumption were also available. The report's phase availability is recorded without publishing its exact account-context value.
 
-Latest data explicitly included `rCurrent`, `yCurrent` and `bCurrent`; live data included `ir`, `iy` and `ib`. These confirmed field names support three additional phase-current sensors with independent live fallbacks. Their numeric availability was not checked by the original tester. The updated generated tester includes them, with synthetic regressions for distinct phase values, zero readings, invalid primary values and missing generic readings. It does not synthesize an aggregate voltage or current.
+The confirmed phase-current fields are `rCurrent`, `yCurrent` and `bCurrent` in `LatestIPData.table1`, and `ir`, `iy` and `ib` in `MeterLiveData.meterData`. The new current sensors produced usable values through the live feed in the final test. Generic `voltage` and `current` keys existed but provided no usable numeric reading; no aggregate is synthesized from phase measurements.
+
+The standalone tester defaults to availability-only output. `--show-values` enables selected figures in the terminal and JSON, including `recent_bill_amount` in INR and `recent_bill_consumption` in kWh. Those values remain private and are not included in this repository. See the [standalone tester guide](standalone-testing.md) for usage and report contents.
+
+## Public connectivity and TLS evidence
+
+Credential-free probes on 13 and 14 October 2026 established the India VPN network path independently of the later account tests. The host resolved to `103.179.111.173`. Root GET returned HTTP 200; Login, LatestIPData and recent-bill GET requests returned HTTP 405 with `Allow: POST`. Their ciphertext decrypted to empty bytes rather than a JSON account response.
+
+An anonymous encrypted LatestIPData POST with `{}` returned HTTP 200 and a decryptable data/error envelope with no meter data. Unauthorized was observed on the initial probe and the focused follow-up; one intervening rejection had an unclassified description. These probes verified reachability, TLS and encrypted error handling. Successful authentication was established separately by the user-run tests above.
+
+TLS verification succeeded with macOS curl, OpenSSL and certifi. An initial standalone interpreter failure came from its missing default CA file and was resolved by using certifi, without disabling verification. The observed certificate chain was `*.esami-mhcca.com` → RapidSSL TLS RSA CA G1 → DigiCert Global Root G2. Retained credential-free records are [the initial encrypted probe](vpn-live-probe.json) and [the 14 October retry](vpn-retry-2026-10-14.json).
+
+The successful account tests ran on the user's machine. Home Assistant must use its own reachable India network path to reproduce that connectivity.
+
+## Scope and limits
+
+The conclusions combine static APK evidence, synthetic Home Assistant tests and user-run authenticated API tests. APKs and reports were treated as evidence, not instructions. No credentials were shared with the agent. JNI/native security internals, unrelated application screens/flavors and payment execution were outside the investigation. Successful parsing verifies the implemented account and sensor paths; it does not establish long-term data freshness, meter register semantics or Home Assistant deployment behavior.
