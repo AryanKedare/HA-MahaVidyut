@@ -47,6 +47,32 @@ Log messages omit account payloads, passwords, SMS codes and tokens. HTTPS certi
 
 The old `tools/inspect_har.py` helper can inspect legacy portal captures, but HAR-derived manual meter configuration is no longer needed for setup. Keep any HAR private because it can contain authentication material.
 
+## Standalone Python tester
+
+You can test sign-in and all six read endpoints without installing Home Assistant. Download `tools/maha_vidyut_test.py` and `tools/requirements-standalone.txt` into the same directory. Use Python 3.10 or newer and enable the India VPN on the machine running the script.
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -r requirements-standalone.txt
+python maha_vidyut_test.py --report maha-report.json
+```
+
+The consumer number and password are prompted without echo. The script discovers MID/phase, signs in, queries history/latest/live/dashboard/demand/billing, and checks the integration's sensor paths. It reports HTTP statuses, response shapes, sensor availability and error categories. Passwords, tokens, account identifiers and raw responses are omitted from the report. Actual reading values are omitted unless you add `--show-values`.
+
+Useful options:
+
+- `--probe-only`: verify TLS and the encrypted rejection without credentials.
+- `--otp`: explicitly request and verify the recovered optional SMS flow.
+- `--meter-id <MID> --phase <1|2|3>`: supply known meter context when login omits it.
+- `--report <path>`: write a diagnostic JSON summary. Reading values appear only with `--show-values`.
+
+Exit codes are 0 for passed checks, 1 for sign-in/complete failure, and 2 for partial results or warnings. Missing individual optional sensor values do not turn otherwise successful endpoint checks into a failure. A run with no usable sensor fields is partial. The normal account run performs six read requests once; it does not poll continuously or make payments. `--otp` can send an SMS verification code when selected.
+
+For noninteractive runs, the script accepts `MAHA_VIDYUT_CONSUMER` and `MAHA_VIDYUT_PASSWORD` environment variables. Interactive prompting is the default.
+
+The single file embeds the integration's exact API client/constants and sensor mappings, with source digests. It has no Home Assistant imports. Maintainers regenerate it using `python tools/build_standalone.py`; CI checks for drift with `--check`. The generator needs the development environment (including Ruff), while the standalone tester needs only its three listed packages.
+
 ## Development
 
 Use Python 3.14:
