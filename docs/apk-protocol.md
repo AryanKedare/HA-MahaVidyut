@@ -96,13 +96,11 @@ The standalone tester defaults to availability-only output. `--show-values` enab
 
 ## Public connectivity and TLS evidence
 
-Credential-free probes on 13 and 14 October 2026 established the India VPN network path independently of the later account tests. The host resolved to `103.179.111.173`. Root GET returned HTTP 200; Login, LatestIPData and recent-bill GET requests returned HTTP 405 with `Allow: POST`. Their ciphertext decrypted to empty bytes rather than a JSON account response.
+Credential-free probes on 13 and 14 October 2026 checked the mobile endpoints independently of the later account tests. The host resolved to `103.179.111.173`. Root GET returned HTTP 200; Login, LatestIPData and recent-bill GET requests returned HTTP 405 with `Allow: POST`. Their ciphertext decrypted to empty bytes rather than a JSON account response.
 
 An anonymous encrypted LatestIPData POST with `{}` returned HTTP 200 and a decryptable data/error envelope with no meter data. Unauthorized was observed on the initial probe and the focused follow-up; one intervening rejection had an unclassified description. These probes verified reachability, TLS and encrypted error handling. Successful authentication was established separately by the user-run tests above.
 
-TLS verification succeeded with macOS curl, OpenSSL and certifi. An initial standalone interpreter failure came from its missing default CA file and was resolved by using certifi, without disabling verification. The observed certificate chain was `*.esami-mhcca.com` → RapidSSL TLS RSA CA G1 → DigiCert Global Root G2. Retained credential-free records are [the initial encrypted probe](vpn-live-probe.json) and [the 14 October retry](vpn-retry-2026-10-14.json).
-
-The successful account tests ran on the user's machine. Home Assistant must use its own reachable India network path to reproduce that connectivity.
+TLS verification succeeded with macOS curl, OpenSSL and certifi. An initial standalone interpreter failure came from its missing default CA file and was resolved by using certifi, without disabling verification. The observed certificate chain was `*.esami-mhcca.com` → RapidSSL TLS RSA CA G1 → DigiCert Global Root G2. Retained credential-free records are [the initial encrypted probe](api-live-probe.json) and [the 14 October retry](api-retry-2026-10-14.json).
 
 ## Scope and limits
 

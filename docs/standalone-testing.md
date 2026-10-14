@@ -4,7 +4,7 @@ Test password login, electricity readings and recent billing without installing 
 
 ## Setup
 
-Use Python 3.10 or newer and an India network path on the machine running the tester. An India VPN resolved the connection timeouts in the verified account tests.
+Use Python 3.10 or newer on a machine that can reach the MahaVidyut API.
 
 Extract the tester bundle, or place `maha_vidyut_test.py` and `requirements-standalone.txt` from the repository's `tools` directory together. From that directory:
 

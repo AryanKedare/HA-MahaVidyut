@@ -298,7 +298,7 @@ def print_summary(report):
             value = str(item["value"]) if "value" in item else ("available" if item["available"] else "unavailable")
             print(f"  {name}: {value}")
     if report["result"] != "passed":
-        print("Check India VPN connectivity on this machine, credentials, and any failed endpoint.")
+        print("Check connectivity on this machine, credentials, and any failed endpoint.")
 
 
 def main(argv=None):

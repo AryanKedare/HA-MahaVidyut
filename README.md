@@ -2,11 +2,11 @@
 
 Unofficial, read-only integration for Maharashtra smart meter accounts. Version 0.2.0 supports password sign-in, automatic meter discovery, electricity readings and recent billing.
 
-User-run tests through an India VPN on 14 October 2026 verified login, all six reading APIs and **18 of 20 sensor fields**, including all three phase voltages, all three phase currents and the recent bill amount. The generic Voltage and Current fields had no usable numeric values for that account. The offline suite has 170 passing tests using Home Assistant 2026.2.3 classes. Installation, ongoing polling and reauthentication on a deployed Home Assistant server remain to be verified.
+User-run tests on 14 October 2026 verified login, all six reading APIs and **18 of 20 sensor fields**, including all three phase voltages, all three phase currents and the recent bill amount. The generic Voltage and Current fields had no usable numeric values for that account. The offline suite has 170 passing tests using Home Assistant 2026.2.3 classes. Installation, ongoing polling and reauthentication on a deployed Home Assistant server remain to be verified.
 
 ## Install or upgrade
 
-Home Assistant must be able to reach `https://cportal.esami-mhcca.com` through an India network path. An India VPN resolved the timeouts during testing. Configure it for the machine running Home Assistant; a VPN on a separate laptop does not cover the server's traffic.
+Home Assistant must be able to reach `https://cportal.esami-mhcca.com`.
 
 1. Download or clone this repository, or extract the installation ZIP.
 2. Copy `custom_components/aesl_smart_meter` into your Home Assistant configuration's `custom_components` directory, replacing the previous integration files.
@@ -42,7 +42,7 @@ Imported/exported energy use Home Assistant's `total_increasing` classification.
 
 ## Test without Home Assistant
 
-Use Python 3.10 or newer on a machine connected through the India VPN. Extract the standalone tester bundle, or download `tools/maha_vidyut_test.py` and `tools/requirements-standalone.txt` into the same directory. Run these commands from that directory:
+Use Python 3.10 or newer. Extract the standalone tester bundle, or download `tools/maha_vidyut_test.py` and `tools/requirements-standalone.txt` into the same directory. Run these commands from that directory:
 
 ```bash
 python3 -m venv .venv
@@ -61,7 +61,7 @@ See the [standalone tester guide](docs/standalone-testing.md) for options, exit 
 
 | Symptom | Action |
 | --- | --- |
-| Connection timeout | Confirm the India VPN covers the machine running Home Assistant or the tester, and that the MahaVidyut app works for the same account. |
+| Connection timeout | Check that Home Assistant or the tester can reach the API host, and that the MahaVidyut app works for the same account. |
 | Sign-in rejected | Check the consumer number and app password. Normal Maharashtra login uses password sign-in; optional SMS login has not been verified live. |
 | Session expired | Complete Home Assistant's reauthentication prompt. |
 | Generic voltage/current unavailable | Use the R/Y/B phase sensors when phase readings are supplied. |

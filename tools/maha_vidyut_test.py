@@ -895,7 +895,7 @@ def print_summary(report):
             print(f"  {name}: {value}")
     if report["result"] != "passed":
         print(
-            "Check India VPN connectivity on this machine, credentials, and any failed endpoint."
+            "Check connectivity on this machine, credentials, and any failed endpoint."
         )
 
 
