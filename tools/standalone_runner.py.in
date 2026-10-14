@@ -1,0 +1,324 @@
+# Standalone runner. The generator inserts the integration's protocol above.
+
+
+def cli_parser():
+    parser = argparse.ArgumentParser(
+        description="Test MahaVidyut sign-in and the Home Assistant integration's APIs."
+    )
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument(
+        "--probe-only", action="store_true",
+        help="Check TLS and the encrypted authentication rejection without credentials.",
+    )
+    modes.add_argument("--otp", action="store_true", help="Use the optional SMS login flow.")
+    parser.add_argument("--consumer", help="Consumer/CA number; otherwise prompted privately.")
+    parser.add_argument("--meter-id", type=positive_int, help="Override a missing/incorrect MID.")
+    parser.add_argument("--phase", type=int, choices=(1, 2, 3), help="Override meter phase.")
+    parser.add_argument("--show-values", action="store_true", help="Show selected meter/billing values.")
+    parser.add_argument("--report", type=Path, help="Save the diagnostic summary as JSON.")
+    return parser
+
+
+def positive_int(value):
+    try:
+        number = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("MID must be a positive integer") from exc
+    if number <= 0:
+        raise argparse.ArgumentTypeError("MID must be a positive integer")
+    return number
+
+
+def private_input(prompt, environment_name=None):
+    value = os.environ.get(environment_name) if environment_name else None
+    if value:
+        return value
+    if not sys.stdin.isatty():
+        suffix = f" or set {environment_name}" if environment_name else ""
+        raise ValueError(f"Run this script in an interactive terminal{suffix}.")
+    return getpass(prompt)
+
+
+def get_credentials(args):
+    consumer = args.consumer or private_input("Consumer / CA number: ", "MAHA_VIDYUT_CONSUMER")
+    consumer = consumer.strip()
+    password = private_input("MahaVidyut password: ", "MAHA_VIDYUT_PASSWORD")
+    if not consumer or not password:
+        raise ValueError("Consumer number and password must not be empty.")
+    return consumer, password
+
+
+def trace_config(report):
+    """Record paths/status/timing, never headers, bodies or account identifiers."""
+    trace = aiohttp.TraceConfig()
+
+    async def started(session, context, params):
+        context.started = time.monotonic()
+
+    async def ended(session, context, params):
+        report["requests"].append({
+            "path": params.url.path, "status": params.response.status,
+            "seconds": round(time.monotonic() - context.started, 3),
+        })
+
+    async def failed(session, context, params):
+        report["requests"].append({
+            "path": params.url.path, "error_type": type(params.exception).__name__,
+            "seconds": round(time.monotonic() - context.started, 3),
+        })
+
+    trace.on_request_start.append(started)
+    trace.on_request_end.append(ended)
+    trace.on_request_exception.append(failed)
+    return trace
+
+
+def failure_summary(exc):
+    """Only known messages from the shared client are suitable for a report."""
+    if isinstance(exc, AESLAuthenticationError):
+        category = "authentication"
+    elif isinstance(exc, AESLProtocolError):
+        category = "protocol"
+    elif isinstance(exc, AESLConnectionError):
+        category = "connection"
+    elif isinstance(exc, AESLApiError):
+        category = "server_rejection"
+    else:
+        category = "unexpected"
+    result = {"status": "failed", "category": category, "error_type": type(exc).__name__}
+    if isinstance(exc, AESLError):
+        result["message"] = str(exc)
+    cause = exc.__cause__
+    if cause is not None:
+        result["cause_type"] = type(cause).__name__
+    return result
+
+
+def lookup_value(root, path):
+    value = root
+    for part in path:
+        if isinstance(part, int):
+            if not isinstance(value, list) or part >= len(value):
+                return None
+            value = value[part]
+        elif isinstance(value, dict):
+            value = value.get(part)
+        else:
+            return None
+    return value
+
+
+def normalize_metric(value, numeric):
+    if value is None or isinstance(value, bool):
+        return None
+    if not isinstance(value, (int, float, str)):
+        return None
+    if numeric:
+        try:
+            number = float(value)
+        except (ValueError, TypeError, OverflowError):
+            return None
+        return number if math.isfinite(number) else None
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    return value
+
+
+def metric_summary(data, show_values=False):
+    """Check exactly the integration's sensor paths and permitted fallbacks."""
+    metrics = {}
+    for metric in METRICS:
+        candidates = [(metric["source"], metric["path"])]
+        if metric.get("fallback_source"):
+            candidates.append((metric["fallback_source"], metric["fallback_path"]))
+        selected = None
+        for source, path in candidates:
+            value = normalize_metric(lookup_value(data.get(source, {}), path), metric["numeric"])
+            if value is not None:
+                selected = (value, source)
+                break
+        item = {"available": selected is not None, "unit": metric.get("unit")}
+        if selected:
+            item["source"] = selected[1]
+            if show_values:
+                item["value"] = selected[0]
+        metrics[metric["key"]] = item
+    return metrics
+
+
+def data_shape(data):
+    """Expose useful field names in known meter containers, never raw values."""
+    shape = {}
+    for name in ("table", "table1", "meterData", "totalAvgConsumptionToday", "balanceDetails", "forecast", "data"):
+        if name not in data:
+            continue
+        value = data[name]
+        item = {"type": type(value).__name__}
+        if isinstance(value, list):
+            item["rows"] = len(value)
+            value = value[0] if value else None
+        if isinstance(value, dict):
+            item["fields"] = sorted(
+                key for key in value
+                if isinstance(key, str) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", key)
+            )[:64]
+        shape[name] = item
+    return shape
+
+
+async def check_probe(session, report):
+    client = AESLClient(session)
+    try:
+        await client.async_post("Dashboard/LatestIPData", {}, authenticated=False)
+    except AESLAuthenticationError:
+        report["checks"]["encrypted_authentication_probe"] = {
+            "status": "passed", "message": "Encrypted response decoded; anonymous request rejected."
+        }
+    except AESLApiError:
+        report["checks"]["encrypted_authentication_probe"] = {
+            "status": "warning", "message": "Encrypted response decoded, but rejection was not Unauthorized."
+        }
+    except Exception as exc:
+        report["checks"]["encrypted_authentication_probe"] = failure_summary(exc)
+    else:
+        report["checks"]["encrypted_authentication_probe"] = {
+            "status": "warning", "message": "Anonymous request returned data; account access was not tested."
+        }
+
+
+async def check_account(session, args, report):
+    consumer, password = get_credentials(args)
+    client = AESLClient(session)
+    try:
+        if args.otp:
+            await client.async_request_otp(consumer, password)
+            code = private_input("SMS code: ")
+            account = await client.async_verify_otp(consumer, password, code.strip())
+        else:
+            account = await client.async_login(consumer, password)
+    except AESLError as exc:
+        report["checks"]["sign_in"] = failure_summary(exc)
+        return
+    finally:
+        password = ""  # Do not persist credentials in the report or on disk.
+    report["checks"]["sign_in"] = {"status": "passed"}
+    meter_id = args.meter_id or account.meter_id
+    phase = args.phase or account.phase
+    report["account_context"] = {
+        "meter_id_available": bool(meter_id), "phase_available": bool(phase),
+        "client_id_available": bool(account.client_id),
+        "meter_id_overridden": args.meter_id is not None, "phase_overridden": args.phase is not None,
+    }
+    client = AESLClient(session, token=account.token, client_id=account.client_id)
+    jobs = {
+        "history": client.async_get_log_history(consumer),
+        "bill": client.async_get_recent_bill(consumer),
+    }
+    if meter_id and phase:
+        jobs.update({
+            "latest": client.async_get_latest(consumer, meter_id, phase),
+            "live": client.async_get_live(consumer, meter_id, phase),
+            "dashboard": client.async_get_dashboard(consumer, meter_id, phase),
+            "mdi": client.async_get_mdi(consumer, meter_id, phase),
+        })
+    else:
+        for source in ("latest", "live", "dashboard", "mdi"):
+            report["checks"][source] = {
+                "status": "skipped", "message": "Missing meter context; use --meter-id and --phase if known."
+            }
+    responses = await asyncio.gather(*jobs.values(), return_exceptions=True)
+    data = {}
+    for source, response in zip(jobs, responses):
+        if isinstance(response, BaseException):
+            if isinstance(response, asyncio.CancelledError):
+                raise response
+            report["checks"][source] = failure_summary(response)
+        else:
+            data[source] = response
+            report["checks"][source] = {"status": "passed", "shape": data_shape(response)}
+    report["metrics"] = metric_summary(data, args.show_values)
+    report["metrics_available"] = sum(item["available"] for item in report["metrics"].values())
+
+
+def result_code(report):
+    checks = report["checks"]
+    if any(item.get("category") == "authentication" for item in checks.values()):
+        return 1
+    if checks.get("sign_in", {}).get("status") == "failed":
+        return 1
+    reading_statuses = [
+        item["status"] for name, item in checks.items()
+        if name in ("history", "bill", "latest", "live", "dashboard", "mdi")
+    ]
+    if reading_statuses and "passed" not in reading_statuses and "failed" in reading_statuses:
+        return 1
+    statuses = [item["status"] for item in checks.values()]
+    if not statuses or all(status == "failed" for status in statuses):
+        return 1
+    if "failed" in statuses or "warning" in statuses or "skipped" in statuses:
+        return 2
+    if "metrics" in report and not report.get("metrics_available"):
+        return 2
+    return 0
+
+
+async def run_checks(args):
+    report = {
+        "host": BASE_URL, "protocol_source_sha256": PROTOCOL_SOURCE_SHA256,
+        "sensor_source_sha256": SENSOR_SOURCE_SHA256,
+        "generated_at_utc": datetime.now(timezone.utc).isoformat(),  # noqa: UP017 (Python 3.10)
+        "mode": "probe_only" if args.probe_only else ("sms_login" if args.otp else "password_login"),
+        "values_included": args.show_values, "checks": {}, "requests": [],
+    }
+    context = ssl.create_default_context(cafile=certifi.where())
+    async with aiohttp.ClientSession(
+        connector=aiohttp.TCPConnector(ssl=context),
+        timeout=aiohttp.ClientTimeout(total=30), trace_configs=[trace_config(report)],
+    ) as session:
+        if args.probe_only:
+            await check_probe(session, report)
+        else:
+            await check_account(session, args, report)
+    code = result_code(report)
+    report["result"] = {0: "passed", 1: "failed", 2: "partial"}[code]
+    return report, code
+
+
+def print_summary(report):
+    print(f"MahaVidyut test: {report['result'].upper()}")
+    for name, item in report["checks"].items():
+        message = item.get("message", "")
+        print(f"  {name}: {item['status'].upper()}" + (f" — {message}" if message else ""))
+    for item in report["requests"]:
+        outcome = f"HTTP {item['status']}" if "status" in item else item["error_type"]
+        print(f"  {item['path']}: {outcome}, {item['seconds']:.3f}s")
+    if "metrics" in report:
+        print(f"Sensor fields available: {report['metrics_available']}/{len(report['metrics'])}")
+        for name, item in report["metrics"].items():
+            value = str(item["value"]) if "value" in item else ("available" if item["available"] else "unavailable")
+            print(f"  {name}: {value}")
+    if report["result"] != "passed":
+        print("Check India VPN connectivity on this machine, credentials, and any failed endpoint.")
+
+
+def main(argv=None):
+    parser = cli_parser()
+    args = parser.parse_args(argv)
+    try:
+        report, code = asyncio.run(run_checks(args))
+        print_summary(report)
+        if args.report:
+            args.report.write_text(json.dumps(report, indent=2, allow_nan=False) + "\n", encoding="utf-8")
+            print(f"Diagnostic report saved to {args.report}")
+        return code
+    except (EOFError, ValueError, OSError) as exc:
+        # These exceptions come from input/report handling, not decrypted API bodies.
+        print(f"Cannot run tester: {exc}", file=sys.stderr)
+        return 1
+    except KeyboardInterrupt:
+        print("Test cancelled.", file=sys.stderr)
+        return 130
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

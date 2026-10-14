@@ -1,0 +1,51 @@
+{
+  "client_date": "2026-10-14",
+  "host": "cportal.esami-mhcca.com",
+  "tls_verification": true,
+  "sent_credentials": false,
+  "consumer_selected": false,
+  "checks": [
+    {
+      "method": "GET",
+      "path": "/",
+      "status": 200,
+      "content_type": "text/html",
+      "allow": null,
+      "elapsed_seconds": 0.65
+    },
+    {
+      "method": "GET",
+      "path": "/SmartMeterMHAccountAPI/api/Account/Login",
+      "status": 405,
+      "content_type": "text/plain",
+      "allow": "POST",
+      "elapsed_seconds": 0.65
+    },
+    {
+      "method": "GET",
+      "path": "/SmartMeterMHPaymentAPI/api/Payment/MsedclGETRecentBill",
+      "status": 405,
+      "content_type": "text/plain",
+      "allow": "POST",
+      "elapsed_seconds": 0.75
+    },
+    {
+      "method": "POST",
+      "path": "/SmartMeterMHDashboardAPI/api/Dashboard/LatestIPData",
+      "status": 200,
+      "content_type": "text/plain",
+      "allow": null,
+      "decryption": "success",
+      "envelope_keys": [
+        "data",
+        "error"
+      ],
+      "has_data": false,
+      "error_description": "other",
+      "elapsed_seconds": 0.66
+    }
+  ],
+  "dns": [
+    "103.179.111.173"
+  ]
+}

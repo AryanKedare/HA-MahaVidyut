@@ -1,0 +1,17 @@
+{
+  "url": "https://cportal.esami-mhcca.com/SmartMeterMHDashboardAPI/api/Dashboard/LatestIPData",
+  "status": 200,
+  "content_type": "text/plain",
+  "response_bytes": 108,
+  "sent_credentials": false,
+  "consumer_selected": false,
+  "decryption": "success",
+  "json_type": "dict",
+  "envelope_keys": [
+    "data",
+    "error"
+  ],
+  "error_description": "Unauthorized",
+  "has_data": false,
+  "tls_verification": "certifi CA bundle; enabled"
+}
