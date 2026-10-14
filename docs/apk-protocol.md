@@ -62,7 +62,22 @@ Dart true has bit 4 clear and false has bit 4 set. Checking this representation 
 | Host, service prefixes, cipher framing and key source | Answered statically. |
 | Password/OTP request contracts and meter context | Answered statically; implemented and tested with synthetic responses. |
 | Polling, numeric handling, energy-feed behavior and migration | 138 offline tests pass using Home Assistant 2026.2.3 classes on Python 3.14; Ruff checks pass. |
-| Current server acceptance, real credentials, response values and key rotation | Unresolved. Public host probes timed out in this environment; no authenticated live request was made. |
+| Public service reachability, TLS and encrypted error envelope | Verified through an India VPN on 13 October 2026 and retried on 14 October: root HTTP 200; API routes GET 405 with Allow: POST; encrypted anonymous LatestIPData POST HTTP 200 with data=null; follow-up rejection description Unauthorized. |
+| Successful account authentication, real meter response values and request-key acceptance after authentication | Unresolved. No real account credentials or consumer identifier were sent. |
 | Meter register semantics, timezone/freshness and meter replacements | Partially answered by named models; real-account validation remains necessary. |
 
 No Android device/emulator or target execution was used. JNI/native security code, payment execution, unrelated screens and all utilities/flavors were outside the integration investigation. A passing offline suite supports the implementation; it does not establish a working live account session.
+
+## Live VPN follow-up: 13 October 2026
+
+After the user enabled an India VPN, the mobile host resolved to `103.179.111.173` and responded without the earlier connection timeout. TLS verification succeeded with macOS curl, OpenSSL, and the certifi CA bundle used by Home Assistant. The initial standalone Python SSL failure came from that interpreter's missing default CA file; no certificate-verification bypass or integration SSL change was needed. The certificate chain presented a wildcard `*.esami-mhcca.com` leaf issued by RapidSSL TLS RSA CA G1 under DigiCert Global Root G2.
+
+Read-only GET requests to Login, LatestIPData and MsedclGETRecentBill returned HTTP 405 with `Allow: POST`. Their ciphertext decrypted to empty bytes using the integration's fixed response key/IV; empty bytes are not a JSON account response.
+
+One anonymous POST to LatestIPData sent the packaged-RSA/AES encrypted representation of `{}`, with no Authorization header and no consumer number. It returned HTTP 200, `Content-Type: text/plain`, and a 108-byte ciphertext. The existing response cipher decrypted it into a JSON object with `data: null` and `error.description: "Unauthorized"`. This validates current connectivity, TLS, encrypted error decoding and the authentication-error contract. It does not establish successful login, meter values, or whether request decryption happens before the unauthenticated rejection.
+
+The India VPN must cover the Home Assistant deployment's traffic for that deployment to use the same tested network path. The successful probe originated on the user's machine, not on an unspecified separate Home Assistant server.
+
+### Retry on 14 October 2026
+
+With network access granted for the new turn, the same TLS-verified probes completed in 0.65–0.75 seconds: root HTTP 200, Login and recent-bill GET HTTP 405 with Allow: POST, and encrypted anonymous LatestIPData POST HTTP 200. The response again decrypted into the expected data/error envelope and contained no meter data. One rejection was recorded as an unclassified error description; an immediate focused follow-up returned `{"description":"Unauthorized","status":null}`. No account credentials or consumer identifier were sent. This retry confirms current reachability and encrypted error handling, not successful account login.

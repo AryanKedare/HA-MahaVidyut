@@ -1,6 +1,6 @@
 # MahaVidyut / AESL Smart Meter for Home Assistant
 
-Unofficial, read-only integration for your own Maharashtra smart meter account. Version 0.2 reconstructs the supplied Android app's API protocol and adds authenticated sign-in. Tested offline against Home Assistant 2026.2.3; current backend and real-account operation still require verification.
+Unofficial, read-only integration for your own Maharashtra smart meter account. Version 0.2 reconstructs the supplied Android app's API protocol and adds authenticated sign-in. Tested offline against Home Assistant 2026.2.3. Public API reachability, TLS and encrypted authentication-error handling were also verified through an India VPN; successful account login and meter readings remain unverified.
 
 ## Install or upgrade
 
@@ -33,7 +33,7 @@ Imported/exported energy retain their existing `total_increasing` sensor classif
 
 ## Troubleshooting and limits
 
-Connection errors: confirm that MahaVidyut works for your account and that Home Assistant can reach the mobile host. Invalid sign-in: check the app password and consumer number. An expired session triggers reauthentication. Backend HTTP 500s remain endpoint failures and can leave affected sensors unavailable.
+Connection errors: confirm that MahaVidyut works for your account and that Home Assistant can reach the mobile host. In this investigation, enabling an India VPN resolved the connection timeout. Ensure the VPN covers Home Assistant's own traffic; a VPN on a separate laptop does not route the Home Assistant server through it. Invalid sign-in: check the app password and consumer number. An expired session triggers reauthentication. Backend HTTP 500s remain endpoint failures and can leave affected sensors unavailable.
 
 Debug logging is optional:
 
