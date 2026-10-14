@@ -38,7 +38,7 @@ PROTOCOL_SOURCE_SHA256 = (
     "589264ae9fa37c137e626f6b704dd9a4e247b3425ef92940c2ddb75aea2d272e"
 )
 SENSOR_SOURCE_SHA256 = (
-    "beb73b3286d399ad0d0c10ff8b40e1f412dc907e8bf1bfc2332c2313bf394642"
+    "075cf03dffc00d87b175ae335920185f066cd69f3414841377f944200029059a"
 )
 
 
@@ -426,6 +426,33 @@ METRICS = (
         "path": ("table1", 0, "current"),
         "fallback_source": "live",
         "fallback_path": ("meterData", 0, "current"),
+        "numeric": True,
+        "unit": "A",
+    },
+    {
+        "key": "current_r",
+        "source": "latest",
+        "path": ("table1", 0, "rCurrent"),
+        "fallback_source": "live",
+        "fallback_path": ("meterData", 0, "ir"),
+        "numeric": True,
+        "unit": "A",
+    },
+    {
+        "key": "current_y",
+        "source": "latest",
+        "path": ("table1", 0, "yCurrent"),
+        "fallback_source": "live",
+        "fallback_path": ("meterData", 0, "iy"),
+        "numeric": True,
+        "unit": "A",
+    },
+    {
+        "key": "current_b",
+        "source": "latest",
+        "path": ("table1", 0, "bCurrent"),
+        "fallback_source": "live",
+        "fallback_path": ("meterData", 0, "ib"),
         "numeric": True,
         "unit": "A",
     },

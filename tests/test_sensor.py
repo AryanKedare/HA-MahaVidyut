@@ -108,6 +108,9 @@ def test_lookup_tolerates_missing_or_wrong_container_types(root):
         ("voltage_yn", 231.2),
         ("voltage_bn", 232.3),
         ("current", 3.4),
+        ("current_r", 1.1),
+        ("current_y", 2.2),
+        ("current_b", 0.0),
         ("frequency", 50.0),
         ("power_factor", 0.95),
     ],
@@ -127,6 +130,9 @@ def test_live_meter_shape_supplies_fallback_readings(key, expected):
                     "vyn": "231.2",
                     "vbn": "232.3",
                     "current": "3.4",
+                    "ir": "1.1",
+                    "iy": "2.2",
+                    "ib": "0",
                     "frequency": "50.0",
                     "pf": "0.95",
                     "meterReadingTime": "2026-01-01T12:00:00",
@@ -153,6 +159,9 @@ def test_live_meter_shape_supplies_fallback_readings(key, expected):
         ("voltage_yn", 221.2),
         ("voltage_bn", 222.3),
         ("current", 8.4),
+        ("current_r", 4.1),
+        ("current_y", 5.2),
+        ("current_b", 0.0),
         ("frequency", 49.9),
         ("power_factor", 0.85),
     ],
@@ -172,6 +181,9 @@ def test_latest_primary_readings_and_timestamps_are_preferred(key, expected):
                     "voltage_YN": "221.2",
                     "voltage_BN": "222.3",
                     "current": "8.4",
+                    "rCurrent": "4.1",
+                    "yCurrent": "5.2",
+                    "bCurrent": "0",
                     "frequency": "49.9",
                     "pf": "0.85",
                 }
@@ -188,6 +200,9 @@ def test_latest_primary_readings_and_timestamps_are_preferred(key, expected):
                     "vyn": "9",
                     "vbn": "9",
                     "current": "9",
+                    "ir": "9",
+                    "iy": "9",
+                    "ib": "9",
                     "frequency": "9",
                     "pf": "0.9",
                     "meterReadingTime": "2026-01-01T12:00:00",
@@ -222,6 +237,60 @@ def test_missing_or_invalid_primary_reading_uses_live_value_and_timestamp(
     assert sensor.extra_state_attributes == {
         "meter_reading_time": "2026-01-01T12:00:00"
     }
+
+
+@pytest.mark.parametrize("invalid_primary", [None, "NaN", "not a reading"])
+def test_three_phase_readings_work_without_generic_voltage_or_current(invalid_primary):
+    """Use the real report's field names with synthetic readings and timestamps."""
+    data = {
+        "latest": {
+            "table1": [
+                {
+                    "voltage": None,
+                    "current": None,
+                    "rCurrent": invalid_primary,
+                    "yCurrent": invalid_primary,
+                    "bCurrent": invalid_primary,
+                }
+            ],
+        },
+        "live": {
+            "meterData": [
+                {
+                    "voltage": None,
+                    "current": None,
+                    "ir": "3.1",
+                    "iy": "0",
+                    "ib": "4.2",
+                    "vrn": "229.1",
+                    "vyn": "231.2",
+                    "vbn": "232.3",
+                    "meterReadingTime": "2026-01-01T12:00:00",
+                }
+            ],
+        },
+    }
+    for key, expected in (
+        ("current_r", 3.1),
+        ("current_y", 0.0),
+        ("current_b", 4.2),
+        ("voltage_rn", 229.1),
+        ("voltage_yn", 231.2),
+        ("voltage_bn", 232.3),
+    ):
+        sensor = make_sensor(key, None)
+        sensor.coordinator.data = data
+        assert sensor.native_value == expected
+        assert sensor.available
+        assert sensor.extra_state_attributes == {
+            "meter_reading_time": "2026-01-01T12:00:00"
+        }
+
+    for key in ("voltage", "current"):
+        sensor = make_sensor(key, None)
+        sensor.coordinator.data = data
+        assert sensor.native_value is None
+        assert not sensor.available
 
 
 @pytest.mark.parametrize(

@@ -1,6 +1,6 @@
 # MahaVidyut / AESL Smart Meter for Home Assistant
 
-Unofficial, read-only integration for your own Maharashtra smart meter account. Version 0.2 reconstructs the supplied Android app's API protocol and adds authenticated sign-in. Tested offline against Home Assistant 2026.2.3. Public API reachability, TLS and encrypted authentication-error handling were also verified through an India VPN; successful account login and meter readings remain unverified.
+Unofficial, read-only integration for your own Maharashtra smart meter account. Version 0.2 reconstructs the supplied Android app's API protocol and adds authenticated sign-in. Tested offline against Home Assistant 2026.2.3. A user-run standalone test through an India VPN verified password login, all six reading APIs and 15 of the original 17 sensor fields on 14 October 2026. Installation and polling on a deployed Home Assistant server remain to be checked.
 
 ## Install or upgrade
 
@@ -15,6 +15,8 @@ Passwords and SMS codes are used only during sign-in and are never saved in the 
 ## Readings and polling
 
 Sensors include imported/exported energy, power, voltage, current, power factor, frequency, daily consumption, balance, connection status, forecast, maximum demand and recent billing. Electrical measurements prefer the `LatestIPData` feed and can fall back independently to the app's `MeterLiveData` feed. Cumulative imported/exported energy use only `LatestIPData`, so switching to an older feed cannot create a false reset in Energy statistics. Both use the authenticated consumer, meter ID and phase. A failed optional endpoint does not take down the others, and null or nonfinite readings are unavailable.
+
+Three-phase meters have separate R-N/Y-N/B-N voltage and R/Y/B current sensors. The verified account supplied phase voltages while the generic Voltage and Current fields had no usable numeric readings. Those two sensors remain unavailable in that case; they are not calculated from the phases. Phase-current paths are `rCurrent`/`yCurrent`/`bCurrent` in latest data and `ir`/`iy`/`ib` in live data, confirmed as field names in the user's report. Their numeric availability requires a run of the updated tester, which now checks 20 sensor fields.
 
 Readings poll every 15 minutes. Billing and demand poll every 12 hours after a successful request; failed requests retry on the next normal poll. If login omits meter details, a second form lets you enter a known MID/phase or leave MID at 0 for history and billing. Reauthentication preserves existing meter details when the server omits them. The actual readings and supported fields depend on your meter and backend.
 

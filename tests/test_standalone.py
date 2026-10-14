@@ -221,6 +221,52 @@ async def test_values_only_expose_selected_metrics(fake_client, report):
     assert "PRIVATE-NAME" not in json.dumps(report)
 
 
+def test_three_phase_sensor_paths_match_reported_schema():
+    """The account report confirms these keys; values here remain synthetic."""
+    data = {
+        "latest": {
+            "table1": [
+                {
+                    "voltage": None,
+                    "current": None,
+                    "rCurrent": "NaN",
+                    "yCurrent": None,
+                    "bCurrent": None,
+                }
+            ]
+        },
+        "live": {
+            "meterData": [
+                {
+                    "voltage": None,
+                    "current": None,
+                    "ir": "3.1",
+                    "iy": "0",
+                    "ib": "4.2",
+                    "vrn": "229.1",
+                    "vyn": "231.2",
+                    "vbn": "232.3",
+                }
+            ]
+        },
+    }
+    metrics = tester.metric_summary(data)
+    for key in (
+        "current_r",
+        "current_y",
+        "current_b",
+        "voltage_rn",
+        "voltage_yn",
+        "voltage_bn",
+    ):
+        assert metrics[key]["available"]
+        assert metrics[key]["source"] == "live"
+        assert "value" not in metrics[key]
+    assert not metrics["current"]["available"]
+    assert not metrics["voltage"]["available"]
+    assert tester.metric_summary(data, show_values=True)["current_y"]["value"] == 0.0
+
+
 @pytest.mark.asyncio
 async def test_optional_otp_reuses_credentials_without_reporting_code(
     fake_client, report, monkeypatch
