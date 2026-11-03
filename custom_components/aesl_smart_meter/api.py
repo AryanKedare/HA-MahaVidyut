@@ -191,6 +191,11 @@ class AESLClient:
         self._token = token
         self._client_id = client_id
 
+    def set_account(self, account: AESLAccount) -> None:
+        """Use a newly authenticated session for subsequent requests."""
+        self._token = account.token
+        self._client_id = account.client_id
+
     async def async_post(
         self,
         endpoint: str,

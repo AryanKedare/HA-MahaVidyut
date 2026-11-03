@@ -4,11 +4,12 @@
     "step": {
       "user": {
         "title": "Sign in to MahaVidyut",
-        "description": "Enter your MahaVidyut consumer number and app password. Your meter ID and phase are discovered automatically. Leave SMS verification off for the normal Maharashtra app login.",
+        "description": "Enter your MahaVidyut consumer number and app password. Your meter ID and phase are discovered automatically. Leave SMS verification off for the normal Maharashtra app login. Enable automatic sign-in to save your password in Home Assistant's local configuration and backups and recover expired sessions. This works only with password sign-in; leave SMS verification off.",
         "data": {
           "login_id": "Consumer / CA number",
           "password": "MahaVidyut password",
-          "use_otp": "Use SMS verification"
+          "use_otp": "Use SMS verification",
+          "auto_reauthenticate": "Save password for automatic sign-in"
         }
       },
       "otp": {
@@ -33,11 +34,13 @@
       "invalid_otp": "The SMS code was rejected. Check the code and try again.",
       "invalid_consumer": "Enter a consumer number.",
       "wrong_consumer": "Sign in to the consumer number already configured for this meter.",
-      "invalid_response": "MahaVidyut returned an unexpected response. The service protocol may have changed."
+      "invalid_response": "MahaVidyut returned an unexpected response. The service protocol may have changed.",
+      "auto_reauth_requires_password": "Automatic sign-in requires password login. Turn off SMS verification or automatic sign-in."
     },
     "abort": {
       "already_configured": "This consumer number is already configured",
-      "reauth_successful": "Sign-in updated successfully"
+      "reauth_successful": "Sign-in updated successfully",
+      "reconfigure_successful": "Sign-in settings updated successfully"
     }
   }
 }

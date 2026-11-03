@@ -318,3 +318,18 @@ def test_bundled_public_key_is_a_2048_bit_rsa_key():
     key = serialization.load_pem_public_key(const.REQUEST_PUBLIC_KEY.encode())
     assert isinstance(key, rsa.RSAPublicKey)
     assert key.key_size == 2048
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("client_id", [None, "new-client"])
+async def test_renewed_session_replaces_token_and_client_headers(client_id):
+    session = Session(Response({"fixture": 1}))
+    client = api.AESLClient(session, token="old-token", client_id="old-client")
+    client.set_account(api.AESLAccount("test-ca", "new-token", client_id=client_id))
+    await client.async_get_log_history("test-ca")
+    headers = session.calls[0][1]["headers"]
+    assert headers["Authorization"] == "Bearer new-token"
+    if client_id is None:
+        assert "clientID" not in headers
+    else:
+        assert headers["clientID"] == "new-client"

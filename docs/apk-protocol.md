@@ -47,11 +47,11 @@ Dart true has bit 4 clear and false has bit 4 set. Checking this representation 
 
 ## Integration design choices
 
-- Access token and returned account context are stored in the HA entry; passwords and OTPs remain transient. The optional OTP UI exposes a recovered generic path; its current availability for Maharashtra accounts is unverified.
+- Access token and returned account context are stored in the HA entry. Version 0.2.1 adds explicit, optional password storage for automatic sign-in after session rejection; storage remains off by default and OTPs remain transient. The optional OTP UI exposes a recovered generic path; its current availability for Maharashtra accounts is unverified.
 - Missing login MID/phase prompts for known details or a history/billing-only setup. Reauthentication preserves existing context when metadata is omitted. Existing consumer/entity IDs are retained through migration.
 - Electrical measurements may use the independent live feed. Cumulative imported/exported energy stay on a single LatestIPData feed, avoiding false resets when an older live register is lower.
 - Endpoints run concurrently. Failed sources are removed instead of serving stale cached readings. Billing/MDI success timestamps are independent; failures retry on the next 15-minute poll.
-- HTTP 401/403 and encrypted Unauthorized responses request reauthentication. A bounded complete object-pool/assembly search identified saved refreshToken fields but no refresh-token request/read path. The integration therefore does not invent automatic refresh behavior.
+- HTTP 401/403 and encrypted Unauthorized responses indicate session rejection. A bounded complete object-pool/assembly search identified saved refreshToken fields but no refresh-token request/read path. Version 0.2.1 uses the existing verified password Login route for optional recovery, with one login and one retry per refresh. It does not implement an unverified refresh-token route. Manual sign-in remains necessary when password storage is disabled, SMS verification is used, credentials are rejected, or the replacement session is also rejected.
 - HTTPS verification is enabled. Redirects are rejected so credential-bearing requests remain on the intended endpoint. Only authentication and reading operations are implemented.
 
 ## Current verification status
@@ -63,9 +63,9 @@ Dart true has bit 4 clear and false has bit 4 set. Checking this representation 
 | Reading APIs and request encryption | Login and all six read endpoints returned HTTP 200 and passed decoding in the authenticated tester. |
 | Sensor values | 18/20 usable fields, including R/Y/B phase voltages and currents, energy, power, frequency, power factor, history, balance, status, forecast, demand and recent billing. Generic voltage/current yielded no usable numeric reading. |
 | Displaying actual figures | The final user-run report used `--show-values` and has `values_included: true`; the user confirmed the figures displayed successfully. |
-| Offline behavior and snapshot parity | 170 tests pass: 147 integration and 23 standalone. Tests use Home Assistant 2026.2.3 classes on Python 3.14; Ruff and generated-snapshot checks pass. CI passed on the merged implementation. |
+| Offline behavior and snapshot parity | Original version 0.2.0: 170 tests passed and CI passed on the merged implementation. Version 0.2.1: 205 local tests pass using Home Assistant 2026.2.3 classes on Python 3.14, including installer coverage; see the [session recovery guide](session-recovery.md). Shell syntax, Ruff and generated-snapshot checks pass. |
 | Optional SMS login | Request contracts recovered statically and covered offline; not verified live for the tested account. |
-| Deployed Home Assistant setup, ongoing polling and reauthentication | Covered offline; not yet verified on the user's Home Assistant server. |
+| Deployed Home Assistant setup, ongoing polling and reauthentication | On 3 November 2026, the user reported that sign-in restores readings briefly before authentication repairs recur. The live rejection reason and version 0.2.1 automatic recovery remain unverified; recovery is covered offline. |
 | Cumulative-register semantics, meter replacement and timestamp freshness/timezone | Not established by the successful API and availability checks. |
 
 ## User-run account validation: 14 October 2026
@@ -76,7 +76,7 @@ The final supplied account report was generated at `2026-10-14T10:06:57Z` after 
 python3 maha_vidyut_test.py --show-values --report maha-report.json
 ```
 
-Its result is `passed`, with `values_included: true` and 18 available sensor fields. Its protocol source digest is `589264ae9fa37c137e626f6b704dd9a4e247b3425ef92940c2ddb75aea2d272e`; its sensor source digest is `075cf03dffc00d87b175ae335920185f066cd69f3414841377f944200029059a`, matching the current 20-sensor implementation.
+Its result is `passed`, with `values_included: true` and 18 available sensor fields. Its protocol source digest is `589264ae9fa37c137e626f6b704dd9a4e247b3425ef92940c2ddb75aea2d272e`; its sensor source digest is `075cf03dffc00d87b175ae335920185f066cd69f3414841377f944200029059a`, matching the version 0.2.0 implementation used for that report. The generated tester's protocol digest changes when its API source changes; the historical report does not validate later session-recovery behavior.
 
 | Operation | HTTP status | Seconds |
 | --- | --- | --- |

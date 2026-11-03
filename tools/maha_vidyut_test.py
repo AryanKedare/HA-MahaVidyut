@@ -35,7 +35,7 @@ from cryptography.hazmat.primitives.asymmetric import padding as asymmetric_padd
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 PROTOCOL_SOURCE_SHA256 = (
-    "589264ae9fa37c137e626f6b704dd9a4e247b3425ef92940c2ddb75aea2d272e"
+    "d401cbc0b9873c1e2ae17661691bee93546af22829d35c0cb27fa538de2082a5"
 )
 SENSOR_SOURCE_SHA256 = (
     "075cf03dffc00d87b175ae335920185f066cd69f3414841377f944200029059a"
@@ -229,6 +229,11 @@ class AESLClient:
         self._base_url = base_url.rstrip("/")
         self._token = token
         self._client_id = client_id
+
+    def set_account(self, account: AESLAccount) -> None:
+        """Use a newly authenticated session for subsequent requests."""
+        self._token = account.token
+        self._client_id = account.client_id
 
     async def async_post(
         self,

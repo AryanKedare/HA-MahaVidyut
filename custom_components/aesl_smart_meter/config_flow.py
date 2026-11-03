@@ -23,6 +23,7 @@ from .api import (
     AESLProtocolError,
 )
 from .const import (
+    CONF_AUTO_REAUTH,
     CONF_CLIENT_ID,
     CONF_LOGIN_ID,
     CONF_METER_ID,
@@ -37,7 +38,7 @@ CONF_OTP = "otp"
 
 
 class AESLSmartMeterConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Store the authenticated session, never the password or SMS code."""
+    """Store the session and, only on request, a password for automatic sign-in."""
 
     VERSION = 2
 
@@ -45,6 +46,7 @@ class AESLSmartMeterConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._login_id = ""
         self._password = ""
         self._use_otp = False
+        self._auto_reauth = False
         self._client: AESLClient | None = None
         self._account: AESLAccount | None = None
         self._reauth_entry = None
@@ -57,6 +59,8 @@ class AESLSmartMeterConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors[CONF_LOGIN_ID] = "invalid_consumer"
             elif not user_input[CONF_PASSWORD]:
                 errors[CONF_PASSWORD] = "invalid_auth"
+            elif user_input.get(CONF_USE_OTP) and user_input.get(CONF_AUTO_REAUTH):
+                errors[CONF_AUTO_REAUTH] = "auto_reauth_requires_password"
             elif (
                 self._reauth_entry
                 and login_id != self._reauth_entry.data[CONF_LOGIN_ID]
@@ -68,6 +72,8 @@ class AESLSmartMeterConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     self._abort_if_unique_id_configured()
                 self._login_id = login_id
                 self._use_otp = bool(user_input.get(CONF_USE_OTP, False))
+                self._auto_reauth = bool(user_input.get(CONF_AUTO_REAUTH, False))
+                self._password = ""
                 self._client = AESLClient(async_get_clientsession(self.hass))
                 try:
                     if self._use_otp:
@@ -87,6 +93,8 @@ class AESLSmartMeterConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     _LOGGER.debug("MahaVidyut sign-in failed: %s", exc)
                     errors["base"] = "cannot_connect"
                 else:
+                    if self._auto_reauth:
+                        self._password = user_input[CONF_PASSWORD]
                     return self._finish(account)
 
         default_id = self._login_id
@@ -101,6 +109,7 @@ class AESLSmartMeterConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         TextSelectorConfig(type=TextSelectorType.PASSWORD)
                     ),
                     vol.Optional(CONF_USE_OTP, default=self._use_otp): bool,
+                    vol.Optional(CONF_AUTO_REAUTH, default=self._auto_reauth): bool,
                 }
             ),
             errors=errors,
@@ -131,7 +140,8 @@ class AESLSmartMeterConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     def _finish(self, account: AESLAccount):
-        self._password = ""
+        if not self._auto_reauth:
+            self._password = ""
         self._client = None
         existing = self._reauth_entry.data if self._reauth_entry else {}
         account = replace(
@@ -180,14 +190,29 @@ class AESLSmartMeterConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             CONF_METER_ID: account.meter_id,
             CONF_PHASE: account.phase,
             CONF_USE_OTP: self._use_otp,
+            CONF_AUTO_REAUTH: self._auto_reauth,
         }
+        if self._auto_reauth:
+            data[CONF_PASSWORD] = self._password
+        self._password = ""
         if self._reauth_entry:
+            updated_data = {**self._reauth_entry.data, **data}
+            if not self._auto_reauth:
+                updated_data.pop(CONF_PASSWORD, None)
             return self.async_update_reload_and_abort(
-                self._reauth_entry, data_updates=data
+                self._reauth_entry, data=updated_data
             )
         return self.async_create_entry(title=f"AESL {account.login_id[-4:]}", data=data)
 
     async def async_step_reauth(self, entry_data):
         self._reauth_entry = self._get_reauth_entry()
         self._use_otp = bool(entry_data.get(CONF_USE_OTP, False))
+        self._auto_reauth = bool(entry_data.get(CONF_AUTO_REAUTH, False))
         return await self.async_step_user()
+
+    async def async_step_reconfigure(self, user_input=None):
+        """Allow changing automatic sign-in without creating another entry."""
+        self._reauth_entry = self._get_reconfigure_entry()
+        self._use_otp = bool(self._reauth_entry.data.get(CONF_USE_OTP, False))
+        self._auto_reauth = bool(self._reauth_entry.data.get(CONF_AUTO_REAUTH, False))
+        return await self.async_step_user(user_input)

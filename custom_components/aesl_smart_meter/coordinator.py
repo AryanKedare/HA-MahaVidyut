@@ -8,11 +8,22 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import CONF_PASSWORD
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import AESLAuthenticationError, AESLClient, AESLError
-from .const import CONF_LOGIN_ID, CONF_METER_ID, CONF_PHASE, DOMAIN, SCAN_INTERVAL
+from .const import (
+    CONF_AUTO_REAUTH,
+    CONF_CLIENT_ID,
+    CONF_LOGIN_ID,
+    CONF_METER_ID,
+    CONF_PHASE,
+    CONF_TOKEN,
+    CONF_USE_OTP,
+    DOMAIN,
+    SCAN_INTERVAL,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -39,10 +50,53 @@ class AESLDataCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         self.login_id = str(config[CONF_LOGIN_ID]).strip()
         self.meter_id = int(config.get(CONF_METER_ID, 0))
         self.phase = int(config.get(CONF_PHASE, 1))
+        self._password = (
+            config.get(CONF_PASSWORD)
+            if config.get(CONF_AUTO_REAUTH) and not config.get(CONF_USE_OTP)
+            else None
+        )
         self._cache: dict[str, dict[str, Any]] = {}
         self._last_slow_success: dict[str, datetime] = {}
 
     async def _async_update_data(self) -> dict[str, dict[str, Any]]:
+        """Recover an expired session once, when password storage was enabled."""
+        try:
+            return await self._async_fetch_data()
+        except AESLAuthenticationError as exc:
+            if not self._password:
+                raise ConfigEntryAuthFailed("AESL authentication expired") from exc
+
+        _LOGGER.debug("AESL session rejected; attempting automatic sign-in")
+        try:
+            account = await self.client.async_login(self.login_id, self._password)
+        except AESLAuthenticationError as exc:
+            raise ConfigEntryAuthFailed("AESL automatic sign-in rejected") from exc
+        except AESLError as exc:
+            raise UpdateFailed("Unable to renew the AESL session") from exc
+
+        self.client.set_account(account)
+        self.meter_id = account.meter_id or self.meter_id
+        self.phase = account.phase or self.phase
+        # A new session can return different meter context. Refresh all sources.
+        self._cache.clear()
+        self._last_slow_success.clear()
+        if self.config_entry is not None:
+            self.hass.config_entries.async_update_entry(
+                self.config_entry,
+                data={
+                    **self.config_entry.data,
+                    CONF_TOKEN: account.token,
+                    CONF_CLIENT_ID: account.client_id,
+                    CONF_METER_ID: self.meter_id,
+                    CONF_PHASE: self.phase,
+                },
+            )
+        try:
+            return await self._async_fetch_data()
+        except AESLAuthenticationError as exc:
+            raise ConfigEntryAuthFailed("AESL authentication expired") from exc
+
+    async def _async_fetch_data(self) -> dict[str, dict[str, Any]]:
         results: dict[str, dict[str, Any]] = dict(self._cache)
         jobs = {
             "history": self.client.async_get_log_history(self.login_id),
@@ -73,9 +127,10 @@ class AESLDataCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         # Concurrent requests keep a failed optional endpoint from delaying
         # every other reading. Cancelling the refresh also cancels its requests.
         responses = await asyncio.gather(*jobs.values(), return_exceptions=True)
-        for response in responses:
+        for name, response in zip(jobs, responses, strict=True):
             if isinstance(response, AESLAuthenticationError):
-                raise ConfigEntryAuthFailed("AESL authentication expired") from response
+                _LOGGER.debug("AESL %s rejected the session", name)
+                raise response
 
         success = 0
         for name, response in zip(jobs, responses, strict=True):
