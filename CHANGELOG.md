@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.3 — Energy statistics correction
+
+- Change **Energy consumed today** from `measurement` to `total_increasing`, so Home Assistant can use the daily resetting counter in the Energy dashboard without a `last_reset` attribute.
+- Remove the `measurement` state class from the month forecast and recent billed consumption. These remain visible energy values and are excluded from usage-counter statistics.
+- Keep the existing entity IDs. Update the integration files and restart Home Assistant to load the corrected metadata.
+- Add regression checks using Home Assistant's Energy validator and recorder reset detection, including a new day's first reading at zero or above zero.
+
+If Home Assistant reports a separate statistics mismatch after upgrading, review that entity on its Statistics page. This update does not modify or delete previously recorded statistics.
+
 ## 0.2.2 — MahaVidyut public release preparation
 
 - Use **MahaVidyut** throughout integration discovery, setup, device metadata, default account titles, logs, Python classes and the standalone tester.
