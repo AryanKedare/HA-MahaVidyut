@@ -54,10 +54,10 @@ def test_portal_error_is_not_exposed():
     )
     try:
         api.unwrap_response(base64.b64encode(ciphertext).decode())
-    except api.AESLApiError as exc:
+    except api.MahaVidyutApiError as exc:
         assert "private" not in str(exc)
     else:
-        assert False, "Expected AESLApiError"
+        assert False, "Expected MahaVidyutApiError"
 
 
 def encode_response(payload):
@@ -151,7 +151,7 @@ async def test_apk_service_routes_and_request_models(
     method, args, service, endpoint, body
 ):
     session = Session(Response({"fixture": 1}))
-    client = api.AESLClient(
+    client = api.MahaVidyutClient(
         session, token="synthetic-token", client_id="synthetic-client"
     )
     with patch.object(
@@ -186,10 +186,10 @@ async def test_login_discovers_context_without_sending_stale_token():
             }
         )
     )
-    client = api.AESLClient(session, token="stale")
+    client = api.MahaVidyutClient(session, token="stale")
     with patch.object(api, "encrypt_request", return_value="cipher") as encrypt:
         result = await client.async_login("test-ca", "synthetic-password")
-    assert result == api.AESLAccount("test-ca", "new-token", 42, 3, "client")
+    assert result == api.MahaVidyutAccount("test-ca", "new-token", 42, 3, "client")
     assert "new-token" not in repr(result)
     encrypt.assert_called_once_with(
         {"loginID": "test-ca", "password": "synthetic-password"},
@@ -202,7 +202,7 @@ async def test_login_discovers_context_without_sending_stale_token():
 @pytest.mark.asyncio
 async def test_otp_request_and_verification_contract():
     session = Session(Response({"message": "sent"}))
-    client = api.AESLClient(session)
+    client = api.MahaVidyutClient(session)
     with patch.object(api, "encrypt_request", return_value="cipher") as encrypt:
         await client.async_request_otp("test-ca", "test-password")
     encrypt.assert_called_once_with(
@@ -230,14 +230,14 @@ async def test_otp_request_and_verification_contract():
 @pytest.mark.parametrize(
     "status,error",
     [
-        (401, api.AESLAuthenticationError),
-        (403, api.AESLAuthenticationError),
-        (500, api.AESLConnectionError),
-        (302, api.AESLConnectionError),
+        (401, api.MahaVidyutAuthenticationError),
+        (403, api.MahaVidyutAuthenticationError),
+        (500, api.MahaVidyutConnectionError),
+        (302, api.MahaVidyutConnectionError),
     ],
 )
 async def test_http_failures_do_not_expose_server_response(status, error):
-    client = api.AESLClient(
+    client = api.MahaVidyutClient(
         Session(Response(status=status, raw="secret-token")), token="test"
     )
     with pytest.raises(error) as caught:
@@ -247,15 +247,15 @@ async def test_http_failures_do_not_expose_server_response(status, error):
 
 def test_unauthorized_encrypted_response_triggers_reauthentication():
     encoded = encode_response({"data": None, "error": {"description": "Unauthorized"}})
-    with pytest.raises(api.AESLAuthenticationError):
+    with pytest.raises(api.MahaVidyutAuthenticationError):
         api.unwrap_response(encoded)
 
 
 @pytest.mark.asyncio
 async def test_data_cannot_be_queried_without_an_account_session():
     session = Session(Response({}))
-    with pytest.raises(api.AESLAuthenticationError):
-        await api.AESLClient(session).async_get_log_history("test-ca")
+    with pytest.raises(api.MahaVidyutAuthenticationError):
+        await api.MahaVidyutClient(session).async_get_log_history("test-ca")
     assert not session.calls
 
 
@@ -269,7 +269,7 @@ async def test_data_cannot_be_queried_without_an_account_session():
     ],
 )
 def test_invalid_authentication_response_is_rejected(payload):
-    with pytest.raises(api.AESLAuthenticationError):
+    with pytest.raises(api.MahaVidyutAuthenticationError):
         api.parse_account(payload, "test-ca")
 
 
@@ -286,19 +286,19 @@ def test_invalid_authentication_response_is_rejected(payload):
     ],
 )
 def test_malformed_meter_context_is_rejected(context):
-    with pytest.raises(api.AESLProtocolError):
+    with pytest.raises(api.MahaVidyutProtocolError):
         api.parse_account({"token": "t", **context}, "test-ca")
 
 
 @pytest.mark.parametrize("raw", ["", "not-base64", "AAAA", "e30=", '"AAAA"'])
 def test_malformed_ciphertext_is_a_protocol_error(raw):
-    with pytest.raises(api.AESLProtocolError):
+    with pytest.raises(api.MahaVidyutProtocolError):
         api.unwrap_response(raw)
 
 
 @pytest.mark.parametrize("payload", [[], {"data": []}, {"data": None}, {"data": "x"}])
 def test_malformed_envelopes_are_rejected(payload):
-    with pytest.raises(api.AESLError):
+    with pytest.raises(api.MahaVidyutError):
         api.unwrap_response(encode_response(payload))
 
 
@@ -308,8 +308,8 @@ async def test_transport_timeouts_are_normalized():
         def post(self, *args, **kwargs):
             raise TimeoutError
 
-    with pytest.raises(api.AESLConnectionError):
-        await api.AESLClient(TimeoutSession(), token="t").async_get_log_history(
+    with pytest.raises(api.MahaVidyutConnectionError):
+        await api.MahaVidyutClient(TimeoutSession(), token="t").async_get_log_history(
             "test-ca"
         )
 
@@ -324,8 +324,10 @@ def test_bundled_public_key_is_a_2048_bit_rsa_key():
 @pytest.mark.parametrize("client_id", [None, "new-client"])
 async def test_renewed_session_replaces_token_and_client_headers(client_id):
     session = Session(Response({"fixture": 1}))
-    client = api.AESLClient(session, token="old-token", client_id="old-client")
-    client.set_account(api.AESLAccount("test-ca", "new-token", client_id=client_id))
+    client = api.MahaVidyutClient(session, token="old-token", client_id="old-client")
+    client.set_account(
+        api.MahaVidyutAccount("test-ca", "new-token", client_id=client_id)
+    )
     await client.async_get_log_history("test-ca")
     headers = session.calls[0][1]["headers"]
     assert headers["Authorization"] == "Bearer new-token"

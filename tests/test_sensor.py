@@ -4,7 +4,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from custom_components.aesl_smart_meter.sensor import DESCRIPTIONS, AESLSensor, lookup
+from custom_components.aesl_smart_meter.sensor import (
+    DESCRIPTIONS,
+    MahaVidyutSensor,
+    lookup,
+)
 
 
 def make_sensor(key, value, *, last_update_success=True):
@@ -20,7 +24,19 @@ def make_sensor(key, value, *, last_update_success=True):
     coordinator = SimpleNamespace(
         data={description.source: root}, last_update_success=last_update_success
     )
-    return AESLSensor(coordinator, "synthetic-consumer", description)
+    return MahaVidyutSensor(coordinator, "synthetic-consumer", description)
+
+
+def test_device_branding_preserves_device_and_sensor_identity():
+    sensor = make_sensor("import_energy", 12.5)
+
+    assert sensor.device_info["name"] == "MahaVidyut"
+    assert sensor.device_info["model"] == "MahaVidyut"
+    assert sensor.device_info["manufacturer"] == "MSEDCL Unofficial Cloud Integration"
+    assert sensor.device_info["identifiers"] == {
+        ("aesl_smart_meter", "synthetic-consumer")
+    }
+    assert sensor.unique_id == "synthetic-consumer_import_energy"
 
 
 @pytest.mark.parametrize("key", ["import_energy", "power_factor", "current_balance"])

@@ -24,9 +24,11 @@ def hass():
 @pytest.mark.asyncio
 async def test_legacy_migration_keeps_identity_and_requires_login(hass):
     data = {"login_id": "test-ca", "meter_id": 42, "phase": 3}
-    entry = SimpleNamespace(version=1, data=data, entry_id="entry")
+    entry = SimpleNamespace(version=1, title="My meter", data=data, entry_id="entry")
     assert await integration.async_migrate_entry(hass, entry)
-    hass.config_entries.async_update_entry.assert_called_once_with(entry, version=2)
+    hass.config_entries.async_update_entry.assert_called_once_with(
+        entry, version=2, minor_version=2
+    )
     assert entry.data == data
     with pytest.raises(ConfigEntryAuthFailed):
         await integration.async_setup_entry(hass, entry)
@@ -42,10 +44,10 @@ async def test_setup_session_coordinator_and_unload(hass, monkeypatch):
         integration, "async_get_clientsession", MagicMock(return_value=session)
     )
     api = MagicMock()
-    monkeypatch.setattr(integration, "AESLClient", api)
+    monkeypatch.setattr(integration, "MahaVidyutClient", api)
     coordinator = SimpleNamespace(async_config_entry_first_refresh=AsyncMock())
     factory = MagicMock(return_value=coordinator)
-    monkeypatch.setattr(integration, "AESLDataCoordinator", factory)
+    monkeypatch.setattr(integration, "MahaVidyutDataCoordinator", factory)
     assert await integration.async_setup_entry(hass, entry)
     api.assert_called_once_with(session, token="token", client_id="client")
     factory.assert_called_once_with(
@@ -64,3 +66,32 @@ async def test_setup_session_coordinator_and_unload(hass, monkeypatch):
 async def test_future_entry_versions_are_not_downgraded(hass):
     assert not await integration.async_migrate_entry(hass, SimpleNamespace(version=3))
     hass.config_entries.async_update_entry.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("version", [1, 2])
+@pytest.mark.parametrize(
+    "title, expected",
+    [
+        ("AESL 1234", "MahaVidyut 1234"),
+        ("My home meter", "My home meter"),
+        ("MahaVidyut 1234", "MahaVidyut 1234"),
+    ],
+)
+async def test_naming_migration_preserves_account_and_custom_title(
+    hass, version, title, expected
+):
+    data = {"login_id": "test-1234", "access_token": "saved-token", "meter_id": 42}
+    entry = SimpleNamespace(
+        version=version, minor_version=1, title=title, data=data, entry_id="entry"
+    )
+
+    assert await integration.async_migrate_entry(hass, entry)
+
+    updates = hass.config_entries.async_update_entry.call_args.kwargs
+    assert updates.get("title", entry.title) == expected
+    assert updates["version"] == 2
+    assert updates["minor_version"] == 2
+    assert "data" not in updates
+    assert entry.data is data
+    assert entry.entry_id == "entry"

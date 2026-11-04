@@ -10,17 +10,17 @@ from homeassistant.data_entry_flow import AbortFlow
 
 from custom_components.aesl_smart_meter import config_flow
 from custom_components.aesl_smart_meter.api import (
-    AESLAccount,
-    AESLAuthenticationError,
-    AESLConnectionError,
-    AESLProtocolError,
+    MahaVidyutAccount,
+    MahaVidyutAuthenticationError,
+    MahaVidyutConnectionError,
+    MahaVidyutProtocolError,
 )
 
 
 @pytest_asyncio.fixture
 async def flow(tmp_path, monkeypatch):
     hass = HomeAssistant(str(tmp_path))
-    obj = config_flow.AESLSmartMeterConfigFlow()
+    obj = config_flow.MahaVidyutSmartMeterConfigFlow()
     obj.hass = hass
     obj.async_set_unique_id = AsyncMock()
     obj._abort_if_unique_id_configured = MagicMock()
@@ -31,13 +31,13 @@ async def flow(tmp_path, monkeypatch):
 
 @pytest.fixture
 def client(monkeypatch):
-    account = AESLAccount("test-ca", "synthetic-token", 42, 3, "synthetic-client")
+    account = MahaVidyutAccount("test-ca", "synthetic-token", 42, 3, "synthetic-client")
     fake = SimpleNamespace(
         async_login=AsyncMock(return_value=account),
         async_request_otp=AsyncMock(),
         async_verify_otp=AsyncMock(return_value=account),
     )
-    monkeypatch.setattr(config_flow, "AESLClient", MagicMock(return_value=fake))
+    monkeypatch.setattr(config_flow, "MahaVidyutClient", MagicMock(return_value=fake))
     return fake
 
 
@@ -47,6 +47,7 @@ async def test_login_discovers_meter_without_storing_password(flow, client):
         {"login_id": " test-ca ", "password": "private"}
     )
     assert result["type"] == "create_entry"
+    assert result["title"] == "MahaVidyut t-ca"
     assert result["data"] == {
         "login_id": "test-ca",
         "access_token": "synthetic-token",
@@ -83,9 +84,9 @@ async def test_duplicate_consumer_checked_before_login(flow, client):
 @pytest.mark.parametrize(
     "error,code",
     [
-        (AESLAuthenticationError("denied"), "invalid_auth"),
-        (AESLConnectionError("offline"), "cannot_connect"),
-        (AESLProtocolError("bad response"), "invalid_response"),
+        (MahaVidyutAuthenticationError("denied"), "invalid_auth"),
+        (MahaVidyutConnectionError("offline"), "cannot_connect"),
+        (MahaVidyutProtocolError("bad response"), "invalid_response"),
     ],
 )
 async def test_login_failure_returns_form_without_password(flow, client, error, code):
@@ -106,7 +107,7 @@ async def test_optional_sms_retry_then_drops_password(flow, client):
     assert "private" not in repr(result)
     client.async_request_otp.assert_awaited_once_with("test-ca", "private")
     client.async_login.assert_not_called()
-    client.async_verify_otp.side_effect = AESLAuthenticationError("bad code")
+    client.async_verify_otp.side_effect = MahaVidyutAuthenticationError("bad code")
     result = await flow.async_step_otp({"otp": "bad"})
     assert result["errors"] == {"base": "invalid_otp"}
     client.async_verify_otp.side_effect = None
@@ -150,7 +151,7 @@ async def test_reauth_preserves_known_meter_if_login_metadata_absent(flow, clien
     flow.async_update_reload_and_abort = MagicMock(
         return_value={"reason": "reauth_successful"}
     )
-    client.async_login.return_value = AESLAccount("test-ca", "new-token")
+    client.async_login.return_value = MahaVidyutAccount("test-ca", "new-token")
     await flow.async_step_user({"login_id": "test-ca", "password": "private"})
     updates = flow.async_update_reload_and_abort.call_args.kwargs["data"]
     assert updates["meter_id"] == 100
@@ -160,7 +161,7 @@ async def test_reauth_preserves_known_meter_if_login_metadata_absent(flow, clien
 
 @pytest.mark.asyncio
 async def test_missing_meter_metadata_is_collected_after_login(flow, client):
-    client.async_login.return_value = AESLAccount("test-ca", "new-token")
+    client.async_login.return_value = MahaVidyutAccount("test-ca", "new-token")
     first = await flow.async_step_user({"login_id": "test-ca", "password": "private"})
     assert first["step_id"] == "meter"
     assert "private" not in repr(first)
@@ -174,7 +175,7 @@ async def test_missing_meter_metadata_is_collected_after_login(flow, client):
 
 @pytest.mark.asyncio
 async def test_unknown_meter_can_be_left_zero_for_history_only(flow, client):
-    client.async_login.return_value = AESLAccount("test-ca", "new-token", phase=3)
+    client.async_login.return_value = MahaVidyutAccount("test-ca", "new-token", phase=3)
     await flow.async_step_user({"login_id": "test-ca", "password": "private"})
     result = await flow.async_step_meter({"meter_id": 0, "phase": 3})
     assert result["data"]["meter_id"] == 0
@@ -193,7 +194,7 @@ async def test_password_is_saved_only_when_automatic_sign_in_is_selected(flow, c
 
 @pytest.mark.asyncio
 async def test_failed_automatic_sign_in_setup_does_not_retain_password(flow, client):
-    client.async_login.side_effect = AESLAuthenticationError("denied")
+    client.async_login.side_effect = MahaVidyutAuthenticationError("denied")
     result = await flow.async_step_user(
         {"login_id": "test-ca", "password": "private", "auto_reauthenticate": True}
     )
@@ -206,7 +207,7 @@ async def test_failed_automatic_sign_in_setup_does_not_retain_password(flow, cli
 async def test_automatic_sign_in_password_survives_meter_form_only_until_saved(
     flow, client
 ):
-    client.async_login.return_value = AESLAccount("test-ca", "new-token")
+    client.async_login.return_value = MahaVidyutAccount("test-ca", "new-token")
     result = await flow.async_step_user(
         {"login_id": "test-ca", "password": "private", "auto_reauthenticate": True}
     )

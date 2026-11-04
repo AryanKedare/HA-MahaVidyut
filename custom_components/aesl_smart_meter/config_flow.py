@@ -16,11 +16,11 @@ from homeassistant.helpers.selector import (
 )
 
 from .api import (
-    AESLAccount,
-    AESLAuthenticationError,
-    AESLClient,
-    AESLError,
-    AESLProtocolError,
+    MahaVidyutAccount,
+    MahaVidyutAuthenticationError,
+    MahaVidyutClient,
+    MahaVidyutError,
+    MahaVidyutProtocolError,
 )
 from .const import (
     CONF_AUTO_REAUTH,
@@ -31,24 +31,26 @@ from .const import (
     CONF_TOKEN,
     CONF_USE_OTP,
     DOMAIN,
+    NAME,
 )
 
 _LOGGER = logging.getLogger(__name__)
 CONF_OTP = "otp"
 
 
-class AESLSmartMeterConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+class MahaVidyutSmartMeterConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Store the session and, only on request, a password for automatic sign-in."""
 
     VERSION = 2
+    MINOR_VERSION = 2
 
     def __init__(self):
         self._login_id = ""
         self._password = ""
         self._use_otp = False
         self._auto_reauth = False
-        self._client: AESLClient | None = None
-        self._account: AESLAccount | None = None
+        self._client: MahaVidyutClient | None = None
+        self._account: MahaVidyutAccount | None = None
         self._reauth_entry = None
 
     async def async_step_user(self, user_input=None):
@@ -74,7 +76,7 @@ class AESLSmartMeterConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._use_otp = bool(user_input.get(CONF_USE_OTP, False))
                 self._auto_reauth = bool(user_input.get(CONF_AUTO_REAUTH, False))
                 self._password = ""
-                self._client = AESLClient(async_get_clientsession(self.hass))
+                self._client = MahaVidyutClient(async_get_clientsession(self.hass))
                 try:
                     if self._use_otp:
                         await self._client.async_request_otp(
@@ -85,11 +87,11 @@ class AESLSmartMeterConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     account = await self._client.async_login(
                         login_id, user_input[CONF_PASSWORD]
                     )
-                except AESLAuthenticationError:
+                except MahaVidyutAuthenticationError:
                     errors["base"] = "invalid_auth"
-                except AESLProtocolError:
+                except MahaVidyutProtocolError:
                     errors["base"] = "invalid_response"
-                except AESLError as exc:
+                except MahaVidyutError as exc:
                     _LOGGER.debug("MahaVidyut sign-in failed: %s", exc)
                     errors["base"] = "cannot_connect"
                 else:
@@ -124,11 +126,11 @@ class AESLSmartMeterConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 account = await self._client.async_verify_otp(
                     self._login_id, self._password, str(user_input[CONF_OTP]).strip()
                 )
-            except AESLAuthenticationError:
+            except MahaVidyutAuthenticationError:
                 errors["base"] = "invalid_otp"
-            except AESLProtocolError:
+            except MahaVidyutProtocolError:
                 errors["base"] = "invalid_response"
-            except AESLError as exc:
+            except MahaVidyutError as exc:
                 _LOGGER.debug("MahaVidyut SMS verification failed: %s", exc)
                 errors["base"] = "cannot_connect"
             else:
@@ -139,7 +141,7 @@ class AESLSmartMeterConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
-    def _finish(self, account: AESLAccount):
+    def _finish(self, account: MahaVidyutAccount):
         if not self._auto_reauth:
             self._password = ""
         self._client = None
@@ -181,7 +183,7 @@ class AESLSmartMeterConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self._create_account_entry(account)
         return self._show_meter_form()
 
-    def _create_account_entry(self, account: AESLAccount):
+    def _create_account_entry(self, account: MahaVidyutAccount):
         self._account = None
         data = {
             CONF_LOGIN_ID: account.login_id,
@@ -202,7 +204,9 @@ class AESLSmartMeterConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_update_reload_and_abort(
                 self._reauth_entry, data=updated_data
             )
-        return self.async_create_entry(title=f"AESL {account.login_id[-4:]}", data=data)
+        return self.async_create_entry(
+            title=f"{NAME} {account.login_id[-4:]}", data=data
+        )
 
     async def async_step_reauth(self, entry_data):
         self._reauth_entry = self._get_reauth_entry()

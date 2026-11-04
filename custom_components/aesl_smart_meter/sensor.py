@@ -1,4 +1,4 @@
-"""Read-only electricity and billing sensors for AESL Smart Meter."""
+"""Read-only electricity and billing sensors for MahaVidyut."""
 
 from __future__ import annotations
 
@@ -15,8 +15,8 @@ from homeassistant.components.sensor import (
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import CONF_LOGIN_ID, DOMAIN, NAME
-from .coordinator import AESLDataCoordinator
+from .const import CONF_LOGIN_ID, DOMAIN, MANUFACTURER, NAME
+from .coordinator import MahaVidyutDataCoordinator
 
 
 def lookup(root: Any, *path: str | int) -> Any:
@@ -35,16 +35,16 @@ def lookup(root: Any, *path: str | int) -> Any:
 
 
 @dataclass(frozen=True, kw_only=True)
-class AESLSensorDescription(SensorEntityDescription):
+class MahaVidyutSensorDescription(SensorEntityDescription):
     path: tuple[str | int, ...]
     source: str
     fallback_source: str | None = None
     fallback_path: tuple[str | int, ...] = ()
 
 
-DESCRIPTIONS: tuple[AESLSensorDescription, ...] = (
+DESCRIPTIONS: tuple[MahaVidyutSensorDescription, ...] = (
     # An older cumulative reading from another feed would appear as a meter reset.
-    AESLSensorDescription(
+    MahaVidyutSensorDescription(
         key="import_energy",
         name="Imported energy",
         source="latest",
@@ -53,7 +53,7 @@ DESCRIPTIONS: tuple[AESLSensorDescription, ...] = (
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL_INCREASING,
     ),
-    AESLSensorDescription(
+    MahaVidyutSensorDescription(
         key="export_energy",
         name="Exported energy",
         source="latest",
@@ -62,7 +62,7 @@ DESCRIPTIONS: tuple[AESLSensorDescription, ...] = (
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL_INCREASING,
     ),
-    AESLSensorDescription(
+    MahaVidyutSensorDescription(
         key="active_power",
         name="Active power",
         source="latest",
@@ -73,7 +73,7 @@ DESCRIPTIONS: tuple[AESLSensorDescription, ...] = (
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
     ),
-    AESLSensorDescription(
+    MahaVidyutSensorDescription(
         key="voltage",
         name="Voltage",
         source="latest",
@@ -84,7 +84,7 @@ DESCRIPTIONS: tuple[AESLSensorDescription, ...] = (
         device_class=SensorDeviceClass.VOLTAGE,
         state_class=SensorStateClass.MEASUREMENT,
     ),
-    AESLSensorDescription(
+    MahaVidyutSensorDescription(
         key="voltage_rn",
         name="R-N voltage",
         source="latest",
@@ -95,7 +95,7 @@ DESCRIPTIONS: tuple[AESLSensorDescription, ...] = (
         device_class=SensorDeviceClass.VOLTAGE,
         state_class=SensorStateClass.MEASUREMENT,
     ),
-    AESLSensorDescription(
+    MahaVidyutSensorDescription(
         key="voltage_yn",
         name="Y-N voltage",
         source="latest",
@@ -106,7 +106,7 @@ DESCRIPTIONS: tuple[AESLSensorDescription, ...] = (
         device_class=SensorDeviceClass.VOLTAGE,
         state_class=SensorStateClass.MEASUREMENT,
     ),
-    AESLSensorDescription(
+    MahaVidyutSensorDescription(
         key="voltage_bn",
         name="B-N voltage",
         source="latest",
@@ -117,7 +117,7 @@ DESCRIPTIONS: tuple[AESLSensorDescription, ...] = (
         device_class=SensorDeviceClass.VOLTAGE,
         state_class=SensorStateClass.MEASUREMENT,
     ),
-    AESLSensorDescription(
+    MahaVidyutSensorDescription(
         key="current",
         name="Current",
         source="latest",
@@ -128,7 +128,7 @@ DESCRIPTIONS: tuple[AESLSensorDescription, ...] = (
         device_class=SensorDeviceClass.CURRENT,
         state_class=SensorStateClass.MEASUREMENT,
     ),
-    AESLSensorDescription(
+    MahaVidyutSensorDescription(
         key="current_r",
         name="R phase current",
         source="latest",
@@ -139,7 +139,7 @@ DESCRIPTIONS: tuple[AESLSensorDescription, ...] = (
         device_class=SensorDeviceClass.CURRENT,
         state_class=SensorStateClass.MEASUREMENT,
     ),
-    AESLSensorDescription(
+    MahaVidyutSensorDescription(
         key="current_y",
         name="Y phase current",
         source="latest",
@@ -150,7 +150,7 @@ DESCRIPTIONS: tuple[AESLSensorDescription, ...] = (
         device_class=SensorDeviceClass.CURRENT,
         state_class=SensorStateClass.MEASUREMENT,
     ),
-    AESLSensorDescription(
+    MahaVidyutSensorDescription(
         key="current_b",
         name="B phase current",
         source="latest",
@@ -161,7 +161,7 @@ DESCRIPTIONS: tuple[AESLSensorDescription, ...] = (
         device_class=SensorDeviceClass.CURRENT,
         state_class=SensorStateClass.MEASUREMENT,
     ),
-    AESLSensorDescription(
+    MahaVidyutSensorDescription(
         key="frequency",
         name="Frequency",
         source="latest",
@@ -172,7 +172,7 @@ DESCRIPTIONS: tuple[AESLSensorDescription, ...] = (
         device_class=SensorDeviceClass.FREQUENCY,
         state_class=SensorStateClass.MEASUREMENT,
     ),
-    AESLSensorDescription(
+    MahaVidyutSensorDescription(
         key="power_factor",
         name="Power factor",
         source="latest",
@@ -181,7 +181,7 @@ DESCRIPTIONS: tuple[AESLSensorDescription, ...] = (
         fallback_path=("meterData", 0, "pf"),
         state_class=SensorStateClass.MEASUREMENT,
     ),
-    AESLSensorDescription(
+    MahaVidyutSensorDescription(
         key="today_consumption",
         name="Energy consumed today",
         source="history",
@@ -190,7 +190,7 @@ DESCRIPTIONS: tuple[AESLSensorDescription, ...] = (
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.MEASUREMENT,
     ),
-    AESLSensorDescription(
+    MahaVidyutSensorDescription(
         key="current_balance",
         name="Current balance",
         source="dashboard",
@@ -198,13 +198,13 @@ DESCRIPTIONS: tuple[AESLSensorDescription, ...] = (
         native_unit_of_measurement="INR",
         device_class=SensorDeviceClass.MONETARY,
     ),
-    AESLSensorDescription(
+    MahaVidyutSensorDescription(
         key="connection_status",
         name="Connection status",
         source="dashboard",
         path=("balanceDetails", "connection_status"),
     ),
-    AESLSensorDescription(
+    MahaVidyutSensorDescription(
         key="current_month_forecast",
         name="Current month forecast",
         source="dashboard",
@@ -213,13 +213,13 @@ DESCRIPTIONS: tuple[AESLSensorDescription, ...] = (
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.MEASUREMENT,
     ),
-    AESLSensorDescription(
+    MahaVidyutSensorDescription(
         key="assigned_max_demand",
         name="Assigned maximum demand",
         source="mdi",
         path=("assignedMaxDemand",),
     ),
-    AESLSensorDescription(
+    MahaVidyutSensorDescription(
         key="recent_bill_amount",
         name="Recent bill amount",
         source="bill",
@@ -227,7 +227,7 @@ DESCRIPTIONS: tuple[AESLSensorDescription, ...] = (
         native_unit_of_measurement="INR",
         device_class=SensorDeviceClass.MONETARY,
     ),
-    AESLSensorDescription(
+    MahaVidyutSensorDescription(
         key="recent_bill_consumption",
         name="Recent billed consumption",
         source="bill",
@@ -241,23 +241,23 @@ DESCRIPTIONS: tuple[AESLSensorDescription, ...] = (
 
 async def async_setup_entry(hass, entry, async_add_entities):
     """Create sensor entities for the consumer."""
-    coordinator: AESLDataCoordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator: MahaVidyutDataCoordinator = hass.data[DOMAIN][entry.entry_id]
     async_add_entities(
-        AESLSensor(coordinator, entry.data[CONF_LOGIN_ID], description)
+        MahaVidyutSensor(coordinator, entry.data[CONF_LOGIN_ID], description)
         for description in DESCRIPTIONS
     )
 
 
-class AESLSensor(CoordinatorEntity[AESLDataCoordinator], SensorEntity):
+class MahaVidyutSensor(CoordinatorEntity[MahaVidyutDataCoordinator], SensorEntity):
     """One metric from a nested response field."""
 
     _attr_has_entity_name = True
 
     def __init__(
         self,
-        coordinator: AESLDataCoordinator,
+        coordinator: MahaVidyutDataCoordinator,
         login_id: str,
-        description: AESLSensorDescription,
+        description: MahaVidyutSensorDescription,
     ):
         super().__init__(coordinator)
         self.entity_description = description
@@ -265,8 +265,8 @@ class AESLSensor(CoordinatorEntity[AESLDataCoordinator], SensorEntity):
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, login_id)},
             name=NAME,
-            manufacturer="Adani Energy Solutions (unofficial cloud integration)",
-            model="AESL Smart Meter",
+            manufacturer=MANUFACTURER,
+            model=NAME,
         )
 
     @property

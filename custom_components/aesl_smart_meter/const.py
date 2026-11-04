@@ -1,9 +1,11 @@
-"""Constants for AESL Smart Meter (unofficial)."""
+"""Constants for MahaVidyut (unofficial)."""
 
 from datetime import timedelta
 
+# Retain the original domain so existing entries, devices and entities keep their IDs.
 DOMAIN = "aesl_smart_meter"
-NAME = "AESL Smart Meter"
+NAME = "MahaVidyut"
+MANUFACTURER = "MSEDCL Unofficial Cloud Integration"
 BASE_URL = "https://cportal.esami-mhcca.com"
 ACCOUNT_SERVICE = "SmartMeterMHAccountAPI"
 DASHBOARD_SERVICE = "SmartMeterMHDashboardAPI"

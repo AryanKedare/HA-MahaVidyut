@@ -75,18 +75,18 @@ def trace_config(report):
 
 def failure_summary(exc):
     """Only known messages from the shared client are suitable for a report."""
-    if isinstance(exc, AESLAuthenticationError):
+    if isinstance(exc, MahaVidyutAuthenticationError):
         category = "authentication"
-    elif isinstance(exc, AESLProtocolError):
+    elif isinstance(exc, MahaVidyutProtocolError):
         category = "protocol"
-    elif isinstance(exc, AESLConnectionError):
+    elif isinstance(exc, MahaVidyutConnectionError):
         category = "connection"
-    elif isinstance(exc, AESLApiError):
+    elif isinstance(exc, MahaVidyutApiError):
         category = "server_rejection"
     else:
         category = "unexpected"
     result = {"status": "failed", "category": category, "error_type": type(exc).__name__}
-    if isinstance(exc, AESLError):
+    if isinstance(exc, MahaVidyutError):
         result["message"] = str(exc)
     cause = exc.__cause__
     if cause is not None:
@@ -167,14 +167,14 @@ def data_shape(data):
 
 
 async def check_probe(session, report):
-    client = AESLClient(session)
+    client = MahaVidyutClient(session)
     try:
         await client.async_post("Dashboard/LatestIPData", {}, authenticated=False)
-    except AESLAuthenticationError:
+    except MahaVidyutAuthenticationError:
         report["checks"]["encrypted_authentication_probe"] = {
             "status": "passed", "message": "Encrypted response decoded; anonymous request rejected."
         }
-    except AESLApiError:
+    except MahaVidyutApiError:
         report["checks"]["encrypted_authentication_probe"] = {
             "status": "warning", "message": "Encrypted response decoded, but rejection was not Unauthorized."
         }
@@ -188,7 +188,7 @@ async def check_probe(session, report):
 
 async def check_account(session, args, report):
     consumer, password = get_credentials(args)
-    client = AESLClient(session)
+    client = MahaVidyutClient(session)
     try:
         if args.otp:
             await client.async_request_otp(consumer, password)
@@ -196,7 +196,7 @@ async def check_account(session, args, report):
             account = await client.async_verify_otp(consumer, password, code.strip())
         else:
             account = await client.async_login(consumer, password)
-    except AESLError as exc:
+    except MahaVidyutError as exc:
         report["checks"]["sign_in"] = failure_summary(exc)
         return
     finally:
@@ -209,7 +209,7 @@ async def check_account(session, args, report):
         "client_id_available": bool(account.client_id),
         "meter_id_overridden": args.meter_id is not None, "phase_overridden": args.phase is not None,
     }
-    client = AESLClient(session, token=account.token, client_id=account.client_id)
+    client = MahaVidyutClient(session, token=account.token, client_id=account.client_id)
     jobs = {
         "history": client.async_get_log_history(consumer),
         "bill": client.async_get_recent_bill(consumer),

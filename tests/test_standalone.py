@@ -31,7 +31,7 @@ class FakeClient:
     async def async_login(self, consumer, password):
         self.calls.append(("login", consumer, password))
         if self.failure == "login":
-            raise tester.AESLAuthenticationError("MahaVidyut sign-in rejected")
+            raise tester.MahaVidyutAuthenticationError("MahaVidyut sign-in rejected")
         return self.account
 
     async def async_request_otp(self, consumer, password):
@@ -44,9 +44,9 @@ class FakeClient:
     async def response(self, source, args, data):
         self.calls.append((source, *args))
         if self.failure in (source, "all"):
-            raise tester.AESLConnectionError("MahaVidyut POST returned HTTP 500")
+            raise tester.MahaVidyutConnectionError("MahaVidyut POST returned HTTP 500")
         if self.failure == "expired" and source == "live":
-            raise tester.AESLAuthenticationError("MahaVidyut session expired")
+            raise tester.MahaVidyutAuthenticationError("MahaVidyut session expired")
         return data
 
     async def async_get_log_history(self, consumer):
@@ -114,10 +114,10 @@ class FakeClient:
 def fake_client(monkeypatch):
     FakeClient.calls = []
     FakeClient.failure = None
-    FakeClient.account = tester.AESLAccount(
+    FakeClient.account = tester.MahaVidyutAccount(
         "PRIVATE-CA", "PRIVATE-TOKEN", 97654321, 3, "PRIVATE-CLIENT"
     )
-    monkeypatch.setattr(tester, "AESLClient", FakeClient)
+    monkeypatch.setattr(tester, "MahaVidyutClient", FakeClient)
     monkeypatch.setenv("MAHA_VIDYUT_CONSUMER", "PRIVATE-CA")
     monkeypatch.setenv("MAHA_VIDYUT_PASSWORD", "PRIVATE-PASSWORD")
     return FakeClient
@@ -308,7 +308,7 @@ async def test_endpoint_failures_get_distinct_result_codes(
 
 @pytest.mark.asyncio
 async def test_missing_context_skips_meter_requests(fake_client, report):
-    fake_client.account = tester.AESLAccount("PRIVATE-CA", "PRIVATE-TOKEN")
+    fake_client.account = tester.MahaVidyutAccount("PRIVATE-CA", "PRIVATE-TOKEN")
     await tester.check_account(None, arguments(), report)
     assert {item[0] for item in fake_client.calls} == {"login", "history", "bill"}
     for source in ("latest", "live", "dashboard", "mdi"):
@@ -318,7 +318,7 @@ async def test_missing_context_skips_meter_requests(fake_client, report):
 
 @pytest.mark.asyncio
 async def test_explicit_meter_context_overrides_missing_metadata(fake_client, report):
-    fake_client.account = tester.AESLAccount("PRIVATE-CA", "PRIVATE-TOKEN")
+    fake_client.account = tester.MahaVidyutAccount("PRIVATE-CA", "PRIVATE-TOKEN")
     await tester.check_account(
         None, arguments("--meter-id", "9876", "--phase", "3"), report
     )
@@ -336,9 +336,9 @@ async def test_probe_never_reads_credentials(monkeypatch, report):
 
         async def async_post(self, endpoint, body, **kwargs):
             calls.append((endpoint, body, kwargs))
-            raise tester.AESLAuthenticationError("MahaVidyut session expired")
+            raise tester.MahaVidyutAuthenticationError("MahaVidyut session expired")
 
-    monkeypatch.setattr(tester, "AESLClient", ProbeClient)
+    monkeypatch.setattr(tester, "MahaVidyutClient", ProbeClient)
     monkeypatch.setattr(
         tester,
         "get_credentials",

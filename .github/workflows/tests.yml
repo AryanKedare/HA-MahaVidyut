@@ -18,6 +18,14 @@ jobs:
       - run: ruff check custom_components tests
       - run: ruff format --check custom_components tests
       - run: python tools/build_standalone.py --check
-      - run: ruff check tools/build_standalone.py tools/maha_vidyut_test.py
-      - run: ruff format --check tools/build_standalone.py tools/maha_vidyut_test.py
+      - run: ruff check tools/build_standalone.py tools/build_release.py tools/maha_vidyut_test.py
+      - run: ruff format --check tools/build_standalone.py tools/build_release.py tools/maha_vidyut_test.py
       - run: python -m pytest -q
+      - run: python tools/build_release.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MahaVidyut-release-bundles
+          path: |
+            dist/MahaVidyut-*.zip
+            dist/SHA256SUMS
+          if-no-files-found: error
