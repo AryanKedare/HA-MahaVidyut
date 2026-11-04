@@ -29,8 +29,8 @@ def test_bundles_are_reproducible_allowlisted_and_checksummed(source, tmp_path):
 
     assert [p.read_bytes() for p in first] == [p.read_bytes() for p in second]
     installation, tester, checksums = first
-    assert installation.name == "MahaVidyut-v0.2.2.zip"
-    assert tester.name == "MahaVidyut-tester-v0.2.2.zip"
+    assert installation.name == "MahaVidyut-v0.2.3.zip"
+    assert tester.name == "MahaVidyut-tester-v0.2.3.zip"
     with ZipFile(installation) as archive:
         assert set(archive.namelist()) == set(build_release.INSTALL_FILES)
         assert archive.getinfo("install.sh").external_attr >> 16 & 0o777 == 0o755

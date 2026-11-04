@@ -188,7 +188,7 @@ DESCRIPTIONS: tuple[MahaVidyutSensorDescription, ...] = (
         path=("totalAvgConsumptionToday", 0, "total_kwh_imp"),
         native_unit_of_measurement="kWh",
         device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.MEASUREMENT,
+        state_class=SensorStateClass.TOTAL_INCREASING,
     ),
     MahaVidyutSensorDescription(
         key="current_balance",
@@ -211,7 +211,6 @@ DESCRIPTIONS: tuple[MahaVidyutSensorDescription, ...] = (
         path=("forecast", "currentMonth", "value"),
         native_unit_of_measurement="kWh",
         device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.MEASUREMENT,
     ),
     MahaVidyutSensorDescription(
         key="assigned_max_demand",
@@ -234,7 +233,6 @@ DESCRIPTIONS: tuple[MahaVidyutSensorDescription, ...] = (
         path=("data", "consumption"),
         native_unit_of_measurement="kWh",
         device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.MEASUREMENT,
     ),
 )
 
