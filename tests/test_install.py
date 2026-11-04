@@ -20,6 +20,8 @@ RUNTIME = (
     "sensor.py",
     "strings.json",
     "translations/en.json",
+    "brand/icon.png",
+    "brand/README.md",
 )
 
 
@@ -76,40 +78,47 @@ def test_local_install_and_upgrade_preserve_config_and_backup(bundle, config, up
     result = run_installer(bundle, config, umask=0o077)
 
     assert result.returncode == 0, result.stderr
-    assert "Using bundled integration files" in result.stdout
+    assert "Using bundled MahaVidyut integration files" in result.stdout
     assert "Restart Home Assistant" in result.stdout
+    assert "MahaVidyut by MSEDCL Unofficial Cloud Integration" in result.stdout
+    assert "New installation: add MahaVidyut" in result.stdout
+    assert "AESL Smart Meter" not in result.stdout
     assert files_under(destination) == {
         name: (bundle / "custom_components" / DOMAIN / name).read_bytes()
         for name in RUNTIME
     }
     assert destination.stat().st_mode & 0o777 == 0o755
     assert (destination / "translations").stat().st_mode & 0o777 == 0o755
+    assert (destination / "brand").stat().st_mode & 0o777 == 0o755
     assert (destination / "api.py").stat().st_mode & 0o777 == 0o644
     assert (config / ".storage/core.config_entries").read_bytes() == entries
     assert (config / "configuration.yaml").read_text() == "default_config:\n"
     assert (config / "custom_components/unrelated/manifest.json").exists()
-    backups = list((config / ".aesl_smart_meter_backups").glob(f"*/{DOMAIN}"))
+    backups = list((config / ".mahavidyut_backups").glob(f"*/{DOMAIN}"))
     if upgrade:
         assert len(backups) == 1
         assert files_under(backups[0]) == {"old.py": b"previous code"}
     else:
         assert not backups
-    assert not list((config / "custom_components").glob(".aesl_smart_meter-install.*"))
+    assert not list((config / "custom_components").glob(".mahavidyut-install.*"))
 
 
-def test_missing_runtime_file_leaves_existing_installation_untouched(bundle, config):
+@pytest.mark.parametrize("missing", ["translations/en.json", "brand/icon.png"])
+def test_missing_runtime_file_leaves_existing_installation_untouched(
+    bundle, config, missing
+):
     destination = config / "custom_components" / DOMAIN
     destination.mkdir()
     (destination / "old.py").write_text("previous code")
     before = files_under(config)
-    (bundle / "custom_components" / DOMAIN / "translations/en.json").unlink()
+    (bundle / "custom_components" / DOMAIN / missing).unlink()
 
     result = run_installer(bundle, config)
 
     assert result.returncode != 0
     assert "Required integration file" in result.stderr
     assert files_under(config) == before
-    assert not (config / ".aesl_smart_meter_backups").exists()
+    assert not (config / ".mahavidyut_backups").exists()
 
 
 def test_nonexistent_config_is_not_created(bundle, tmp_path):
@@ -145,7 +154,7 @@ def test_failure_after_backup_restores_previous_installation(bundle, config, tmp
     mover = commands / "mv"
     mover.write_text(
         "#!/usr/bin/env bash\n"
-        'if [[ "${2##*/}" == .aesl_smart_meter-install.* ]]; then exit 1; fi\n'
+        'if [[ "${2##*/}" == .mahavidyut-install.* ]]; then exit 1; fi\n'
         'exec "$INSTALL_TEST_REAL_MV" "$@"\n'
     )
     mover.chmod(0o755)
@@ -160,7 +169,7 @@ def test_failure_after_backup_restores_previous_installation(bundle, config, tmp
     assert result.returncode != 0
     assert "Restored the previous installation" in result.stdout
     assert files_under(config) == before
-    assert not list((config / "custom_components").glob(".aesl_smart_meter-install.*"))
+    assert not list((config / "custom_components").glob(".mahavidyut-install.*"))
 
 
 @pytest.mark.parametrize("mode", ["success", "download-failure", "bad-layout"])
@@ -214,13 +223,11 @@ def test_standalone_downloads_main_and_preserves_existing_files_on_failure(
     if mode == "success":
         assert result.returncode == 0, result.stderr
         assert set(files_under(destination)) == set(RUNTIME)
-        assert (
-            len(list((config / ".aesl_smart_meter_backups").glob(f"*/{DOMAIN}"))) == 1
-        )
+        assert len(list((config / ".mahavidyut_backups").glob(f"*/{DOMAIN}"))) == 1
     else:
         assert result.returncode != 0
         assert files_under(config) == before
-        assert not (config / ".aesl_smart_meter_backups").exists()
+        assert not (config / ".mahavidyut_backups").exists()
 
 
 def test_help_and_argument_validation_have_no_side_effects(bundle, config):

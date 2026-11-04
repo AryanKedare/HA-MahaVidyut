@@ -24,23 +24,23 @@ from .const import (
 )
 
 
-class AESLError(Exception):
+class MahaVidyutError(Exception):
     """Base portal error; messages must not include credentials or payloads."""
 
 
-class AESLConnectionError(AESLError):
+class MahaVidyutConnectionError(MahaVidyutError):
     """Connection or HTTP error."""
 
 
-class AESLAuthenticationError(AESLError):
+class MahaVidyutAuthenticationError(MahaVidyutError):
     """The account session is absent, expired, or rejected."""
 
 
-class AESLProtocolError(AESLError):
+class MahaVidyutProtocolError(MahaVidyutError):
     """Unexpected cipher or server response."""
 
 
-class AESLApiError(AESLError):
+class MahaVidyutApiError(MahaVidyutError):
     """The server returned an application error."""
 
 
@@ -77,7 +77,7 @@ def decrypt_response(response: str) -> Any:
         )
         return json.loads(plain)
     except (ValueError, UnicodeDecodeError, json.JSONDecodeError, TypeError) as exc:
-        raise AESLProtocolError("Unable to decode encrypted response") from exc
+        raise MahaVidyutProtocolError("Unable to decode encrypted response") from exc
 
 
 def encrypt_request(body: Any, public_key_b64: str) -> str:
@@ -112,29 +112,29 @@ def encrypt_request(body: Any, public_key_b64: str) -> str:
 
         return ".".join((protect(_b64(aes_key)), protect(_b64(iv)), _b64(encrypted)))
     except (ValueError, TypeError, AttributeError) as exc:
-        raise AESLProtocolError("Invalid RSA public key") from exc
+        raise MahaVidyutProtocolError("Invalid RSA public key") from exc
 
 
 def unwrap_response(encoded: str) -> dict[str, Any]:
-    """Normalize {data, error} envelopes from the AESL API."""
+    """Normalize {data, error} envelopes from the MahaVidyut API."""
     obj = decrypt_response(encoded)
     if not isinstance(obj, dict):
-        raise AESLProtocolError("Response was not a JSON object")
+        raise MahaVidyutProtocolError("Response was not a JSON object")
     error = obj.get("error")
     if error:
         if isinstance(error, dict) and error.get("description") == "Unauthorized":
-            raise AESLAuthenticationError("MahaVidyut session expired")
-        raise AESLApiError("Portal rejected request")
+            raise MahaVidyutAuthenticationError("MahaVidyut session expired")
+        raise MahaVidyutApiError("Portal rejected request")
     data = obj.get("data")
     if data is None:
-        raise AESLApiError("Portal returned no data")
+        raise MahaVidyutApiError("Portal returned no data")
     if not isinstance(data, dict):
-        raise AESLProtocolError("Response data was not an object")
+        raise MahaVidyutProtocolError("Response data was not an object")
     return data
 
 
 @dataclass(frozen=True)
-class AESLAccount:
+class MahaVidyutAccount:
     """Validated login context; exclude secrets from representations."""
 
     login_id: str
@@ -144,17 +144,17 @@ class AESLAccount:
     client_id: str | None = None
 
 
-def parse_account(data: dict[str, Any], login_id: str) -> AESLAccount:
+def parse_account(data: dict[str, Any], login_id: str) -> MahaVidyutAccount:
     """Accept the Login user or the TwoFactorVerifyOTP userDetails model."""
     user = data.get("userDetails", data)
     if not isinstance(user, dict):
-        raise AESLAuthenticationError("MahaVidyut returned no account session")
+        raise MahaVidyutAuthenticationError("MahaVidyut returned no account session")
     token = user.get("token")
     consumer = user.get("caNumber")
     if not isinstance(token, str) or not token.strip():
-        raise AESLAuthenticationError("MahaVidyut returned no access token")
+        raise MahaVidyutAuthenticationError("MahaVidyut returned no access token")
     if consumer is not None and str(consumer).strip() != login_id:
-        raise AESLAuthenticationError("MahaVidyut returned a different consumer")
+        raise MahaVidyutAuthenticationError("MahaVidyut returned a different consumer")
     try:
         meter_id = int(user.get("mid") or 0)
         phase = int(user.get("phase") or 0)
@@ -168,14 +168,18 @@ def parse_account(data: dict[str, Any], login_id: str) -> AESLAccount:
         if user.get("phase") is not None and float(user["phase"]) != phase:
             raise ValueError
     except (ValueError, TypeError, OverflowError) as exc:
-        raise AESLProtocolError("MahaVidyut returned invalid meter context") from exc
+        raise MahaVidyutProtocolError(
+            "MahaVidyut returned invalid meter context"
+        ) from exc
     client_id = user.get("clientID")
     if client_id is not None and not isinstance(client_id, str):
-        raise AESLProtocolError("MahaVidyut returned an invalid client ID")
-    return AESLAccount(login_id, token.strip(), meter_id, phase, client_id or None)
+        raise MahaVidyutProtocolError("MahaVidyut returned an invalid client ID")
+    return MahaVidyutAccount(
+        login_id, token.strip(), meter_id, phase, client_id or None
+    )
 
 
-class AESLClient:
+class MahaVidyutClient:
     """Authenticated MahaVidyut client; no payments or account writes."""
 
     def __init__(
@@ -191,7 +195,7 @@ class AESLClient:
         self._token = token
         self._client_id = client_id
 
-    def set_account(self, account: AESLAccount) -> None:
+    def set_account(self, account: MahaVidyutAccount) -> None:
         """Use a newly authenticated session for subsequent requests."""
         self._token = account.token
         self._client_id = account.client_id
@@ -205,7 +209,7 @@ class AESLClient:
     ) -> dict[str, Any]:
         """Send the APK's encrypted wire format to the appropriate service."""
         if authenticated and not self._token:
-            raise AESLAuthenticationError("Sign in to your MahaVidyut account")
+            raise MahaVidyutAuthenticationError("Sign in to your MahaVidyut account")
         controller = endpoint.split("/", 1)[0]
         service = {
             "Account": ACCOUNT_SERVICE,
@@ -213,7 +217,7 @@ class AESLClient:
             "Payment": PAYMENT_SERVICE,
         }.get(controller)
         if service is None:
-            raise AESLProtocolError("Unsupported MahaVidyut service")
+            raise MahaVidyutProtocolError("Unsupported MahaVidyut service")
         encrypted_body = encrypt_request(body, REQUEST_PUBLIC_KEY)
         headers = {
             "Accept": "*/*",
@@ -233,17 +237,19 @@ class AESLClient:
                 allow_redirects=False,
             ) as response:
                 if response.status in (401, 403):
-                    raise AESLAuthenticationError("MahaVidyut authentication rejected")
+                    raise MahaVidyutAuthenticationError(
+                        "MahaVidyut authentication rejected"
+                    )
                 if response.status != 200:
-                    raise AESLConnectionError(
+                    raise MahaVidyutConnectionError(
                         f"MahaVidyut POST returned HTTP {response.status}"
                     )
                 raw = await response.text()
             return unwrap_response(raw)
         except (TimeoutError, ClientError) as exc:
-            raise AESLConnectionError("MahaVidyut connection failed") from exc
+            raise MahaVidyutConnectionError("MahaVidyut connection failed") from exc
 
-    async def async_login(self, login_id: str, password: str) -> AESLAccount:
+    async def async_login(self, login_id: str, password: str) -> MahaVidyutAccount:
         """Use the Maharashtra app's password login and discover meter context."""
         try:
             data = await self.async_post(
@@ -251,8 +257,8 @@ class AESLClient:
                 {"loginID": login_id, "password": password},
                 authenticated=False,
             )
-        except AESLApiError as exc:
-            raise AESLAuthenticationError("MahaVidyut sign-in rejected") from exc
+        except MahaVidyutApiError as exc:
+            raise MahaVidyutAuthenticationError("MahaVidyut sign-in rejected") from exc
         return parse_account(data, login_id)
 
     async def async_request_otp(self, login_id: str, password: str) -> None:
@@ -263,15 +269,17 @@ class AESLClient:
                 {"loginID": login_id, "password": password},
                 authenticated=False,
             )
-        except AESLApiError as exc:
-            raise AESLAuthenticationError("MahaVidyut verification rejected") from exc
+        except MahaVidyutApiError as exc:
+            raise MahaVidyutAuthenticationError(
+                "MahaVidyut verification rejected"
+            ) from exc
 
     async def async_verify_otp(
         self, login_id: str, password: str, otp: str
-    ) -> AESLAccount:
+    ) -> MahaVidyutAccount:
         """Verify SMS code; smsTypeID 6 is the APK's login2FA request."""
         if not otp.isascii() or not otp.isdecimal():
-            raise AESLAuthenticationError("Enter a numeric SMS code")
+            raise MahaVidyutAuthenticationError("Enter a numeric SMS code")
         try:
             data = await self.async_post(
                 "Account/TwoFactorVerifyOTP",
@@ -283,8 +291,8 @@ class AESLClient:
                 },
                 authenticated=False,
             )
-        except AESLApiError as exc:
-            raise AESLAuthenticationError("MahaVidyut SMS code rejected") from exc
+        except MahaVidyutApiError as exc:
+            raise MahaVidyutAuthenticationError("MahaVidyut SMS code rejected") from exc
         return parse_account(data, login_id)
 
     async def async_get_log_history(self, login_id: str) -> dict[str, Any]:

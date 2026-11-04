@@ -24,13 +24,13 @@ from custom_components.aesl_smart_meter import (
     coordinator as coordinator_module,
 )
 from custom_components.aesl_smart_meter.api import (
-    AESLAccount,
-    AESLAuthenticationError,
-    AESLConnectionError,
-    AESLProtocolError,
+    MahaVidyutAccount,
+    MahaVidyutAuthenticationError,
+    MahaVidyutConnectionError,
+    MahaVidyutProtocolError,
 )
-from custom_components.aesl_smart_meter.coordinator import AESLDataCoordinator
-from custom_components.aesl_smart_meter.sensor import DESCRIPTIONS, AESLSensor
+from custom_components.aesl_smart_meter.coordinator import MahaVidyutDataCoordinator
+from custom_components.aesl_smart_meter.sensor import DESCRIPTIONS, MahaVidyutSensor
 
 ENDPOINTS = {
     "history": "async_get_log_history",
@@ -63,7 +63,7 @@ def client():
 
 @pytest.fixture
 def coordinator(hass, client):
-    return AESLDataCoordinator(
+    return MahaVidyutDataCoordinator(
         hass, client, {"login_id": "synthetic-consumer", "meter_id": 12, "phase": 1}
     )
 
@@ -84,7 +84,9 @@ def clock(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_failed_slow_source_retries_independently(coordinator, client, clock):
-    client.async_get_recent_bill.side_effect = AESLConnectionError("Temporary outage")
+    client.async_get_recent_bill.side_effect = MahaVidyutConnectionError(
+        "Temporary outage"
+    )
 
     first = await coordinator._async_update_data()
 
@@ -127,7 +129,9 @@ async def test_successful_slow_sources_follow_twelve_hour_interval(
 @pytest.mark.asyncio
 async def test_partial_outage_keeps_successful_sources(coordinator, client):
     await coordinator._async_update_data()
-    client.async_get_latest.side_effect = AESLConnectionError("Reading unavailable")
+    client.async_get_latest.side_effect = MahaVidyutConnectionError(
+        "Reading unavailable"
+    )
 
     result = await coordinator._async_update_data()
 
@@ -147,7 +151,9 @@ async def test_latest_and_live_requests_include_consumer_context(coordinator, cl
 
 @pytest.mark.asyncio
 async def test_live_outage_does_not_hide_summary_readings(coordinator, client):
-    client.async_get_live.side_effect = AESLConnectionError("Live reading unavailable")
+    client.async_get_live.side_effect = MahaVidyutConnectionError(
+        "Live reading unavailable"
+    )
 
     result = await coordinator._async_update_data()
 
@@ -164,13 +170,15 @@ async def test_failed_reading_sources_cannot_supply_stale_sensor_fallback(
     client.async_get_live.return_value = {"meterData": [{"kw": 99.0}]}
     coordinator.data = await coordinator._async_update_data()
     description = next(item for item in DESCRIPTIONS if item.key == "active_power")
-    sensor = AESLSensor(coordinator, "synthetic-consumer", description)
+    sensor = MahaVidyutSensor(coordinator, "synthetic-consumer", description)
     assert sensor.native_value == 100.0
 
-    client.async_get_latest.side_effect = AESLConnectionError(
+    client.async_get_latest.side_effect = MahaVidyutConnectionError(
         "Latest reading unavailable"
     )
-    client.async_get_live.side_effect = AESLConnectionError("Live reading unavailable")
+    client.async_get_live.side_effect = MahaVidyutConnectionError(
+        "Live reading unavailable"
+    )
     coordinator.data = await coordinator._async_update_data()
 
     assert "latest" not in coordinator.data
@@ -181,7 +189,9 @@ async def test_failed_reading_sources_cannot_supply_stale_sensor_fallback(
 
 @pytest.mark.asyncio
 async def test_missing_meter_id_skips_meter_specific_requests(hass, client):
-    coordinator = AESLDataCoordinator(hass, client, {"login_id": "synthetic-consumer"})
+    coordinator = MahaVidyutDataCoordinator(
+        hass, client, {"login_id": "synthetic-consumer"}
+    )
 
     result = await coordinator._async_update_data()
 
@@ -196,7 +206,9 @@ async def test_total_outage_fails_refresh_without_marking_slow_success(
     coordinator, client
 ):
     for method in ENDPOINTS.values():
-        getattr(client, method).side_effect = AESLConnectionError("Portal unavailable")
+        getattr(client, method).side_effect = MahaVidyutConnectionError(
+            "Portal unavailable"
+        )
 
     with pytest.raises(UpdateFailed):
         await coordinator._async_update_data()
@@ -206,7 +218,9 @@ async def test_total_outage_fails_refresh_without_marking_slow_success(
 
 @pytest.mark.asyncio
 async def test_authentication_failure_requires_reauthentication(coordinator, client):
-    client.async_get_latest.side_effect = AESLAuthenticationError("Session expired")
+    client.async_get_latest.side_effect = MahaVidyutAuthenticationError(
+        "Session expired"
+    )
 
     with pytest.raises(ConfigEntryAuthFailed):
         await coordinator._async_update_data()
@@ -288,7 +302,7 @@ async def test_unexpected_programming_error_is_not_hidden(coordinator, client):
 
 @pytest.fixture
 def automatic(hass, client):
-    coordinator = AESLDataCoordinator(
+    coordinator = MahaVidyutDataCoordinator(
         hass,
         client,
         {
@@ -300,7 +314,9 @@ def automatic(hass, client):
         },
     )
     client.async_login = AsyncMock(
-        return_value=AESLAccount("synthetic-consumer", "new-token", 99, 3, "new-client")
+        return_value=MahaVidyutAccount(
+            "synthetic-consumer", "new-token", 99, 3, "new-client"
+        )
     )
     client.set_account = MagicMock()
     return coordinator
@@ -312,7 +328,7 @@ async def test_all_expired_endpoints_share_one_login_and_retry(
 ):
     for source, method in ENDPOINTS.items():
         getattr(client, method).side_effect = [
-            AESLAuthenticationError("Session expired"),
+            MahaVidyutAuthenticationError("Session expired"),
             {"source": source},
         ]
 
@@ -347,10 +363,10 @@ async def test_renewed_session_is_persisted_and_slow_cache_is_refreshed(
     await automatic._async_update_data()
     client.async_login.assert_not_awaited()
     clock[0] += timedelta(minutes=15)
-    account = AESLAccount("synthetic-consumer", "new-token", *metadata)
+    account = MahaVidyutAccount("synthetic-consumer", "new-token", *metadata)
     client.async_login.return_value = account
     client.async_get_latest.side_effect = [
-        AESLAuthenticationError("Session expired"),
+        MahaVidyutAuthenticationError("Session expired"),
         {"source": "latest"},
     ]
     entry = SimpleNamespace(
@@ -401,9 +417,9 @@ async def test_renewed_session_is_persisted_and_slow_cache_is_refreshed(
 async def test_password_recovery_requires_explicit_opt_in_and_password_login(
     hass, client, config
 ):
-    obj = AESLDataCoordinator(hass, client, {"login_id": "test-ca", **config})
+    obj = MahaVidyutDataCoordinator(hass, client, {"login_id": "test-ca", **config})
     client.async_login = AsyncMock()
-    client.async_get_latest.side_effect = AESLAuthenticationError("expired")
+    client.async_get_latest.side_effect = MahaVidyutAuthenticationError("expired")
     with pytest.raises(ConfigEntryAuthFailed):
         await obj._async_update_data()
     client.async_login.assert_not_awaited()
@@ -411,7 +427,7 @@ async def test_password_recovery_requires_explicit_opt_in_and_password_login(
 
 @pytest.mark.asyncio
 async def test_rejected_new_session_cannot_loop_logins(automatic, client):
-    client.async_get_latest.side_effect = AESLAuthenticationError("expired")
+    client.async_get_latest.side_effect = MahaVidyutAuthenticationError("expired")
     with pytest.raises(ConfigEntryAuthFailed):
         await automatic._async_update_data()
     assert client.async_login.await_count == 1
@@ -421,8 +437,8 @@ async def test_rejected_new_session_cannot_loop_logins(automatic, client):
 
 @pytest.mark.asyncio
 async def test_rejected_password_starts_manual_reauthentication(automatic, client):
-    client.async_get_latest.side_effect = AESLAuthenticationError("expired")
-    client.async_login.side_effect = AESLAuthenticationError("invalid password")
+    client.async_get_latest.side_effect = MahaVidyutAuthenticationError("expired")
+    client.async_login.side_effect = MahaVidyutAuthenticationError("invalid password")
     with pytest.raises(ConfigEntryAuthFailed):
         await automatic._async_update_data()
     assert client.async_login.await_count == 1
@@ -430,13 +446,13 @@ async def test_rejected_password_starts_manual_reauthentication(automatic, clien
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("error", [AESLConnectionError, AESLProtocolError])
+@pytest.mark.parametrize("error", [MahaVidyutConnectionError, MahaVidyutProtocolError])
 async def test_transient_login_failure_retries_on_next_poll_without_repair(
     automatic, client, error
 ):
     client.async_get_latest.side_effect = [
-        AESLAuthenticationError("expired"),
-        AESLAuthenticationError("expired"),
+        MahaVidyutAuthenticationError("expired"),
+        MahaVidyutAuthenticationError("expired"),
         {"source": "latest"},
     ]
     client.async_login.side_effect = [
@@ -455,7 +471,7 @@ async def test_transient_login_failure_retries_on_next_poll_without_repair(
 
 @pytest.mark.asyncio
 async def test_cancellation_during_login_is_propagated(automatic, client):
-    client.async_get_latest.side_effect = AESLAuthenticationError("expired")
+    client.async_get_latest.side_effect = MahaVidyutAuthenticationError("expired")
     started = asyncio.Event()
 
     async def login(*args):
@@ -558,8 +574,8 @@ async def test_first_refresh_with_expired_saved_token_recovers_using_real_client
         raising=False,
     )
     session = Session()
-    client = api_module.AESLClient(session, token=entry.data["access_token"])
-    obj = AESLDataCoordinator(hass, client, entry.data, config_entry=entry)
+    client = api_module.MahaVidyutClient(session, token=entry.data["access_token"])
+    obj = MahaVidyutDataCoordinator(hass, client, entry.data, config_entry=entry)
 
     await obj.async_config_entry_first_refresh()
 
@@ -572,10 +588,12 @@ async def test_first_refresh_with_expired_saved_token_recovers_using_real_client
     entry.async_start_reauth.assert_not_called()
 
     # A fresh client/coordinator uses the persisted token without another login.
-    fresh_client = api_module.AESLClient(
+    fresh_client = api_module.MahaVidyutClient(
         session, token=entry.data["access_token"], client_id=entry.data["client_id"]
     )
-    restarted = AESLDataCoordinator(hass, fresh_client, entry.data, config_entry=entry)
+    restarted = MahaVidyutDataCoordinator(
+        hass, fresh_client, entry.data, config_entry=entry
+    )
     await restarted.async_config_entry_first_refresh()
     assert restarted.last_update_success
     assert session.logins == 1
