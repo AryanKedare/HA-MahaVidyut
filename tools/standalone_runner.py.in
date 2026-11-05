@@ -48,27 +48,94 @@ def get_credentials(args):
     return consumer, password
 
 
+def exception_type_chain(exc):
+    """Keep bounded cause/context class names, without exception text or values."""
+    names = []
+    seen = set()
+    while exc is not None and len(names) < 6 and id(exc) not in seen:
+        seen.add(id(exc))
+        names.append(type(exc).__name__[:80])
+        exc = exc.__cause__ if exc.__cause__ is not None else exc.__context__
+    return names
+
+
+def encoding_header(value, *, transfer=False):
+    """Admit only standard encoding tokens and quality values into diagnostics."""
+    if value is None:
+        return None
+    if not isinstance(value, str) or len(value) > 160:
+        return "other"
+    allowed = (
+        {"chunked", "gzip", "deflate", "compress", "identity", "trailers"}
+        if transfer else
+        {"gzip", "deflate", "br", "zstd", "identity", "compress", "x-gzip", "x-deflate", "*"}
+    )
+    parts = [part.strip().lower() for part in value.split(",")]
+    for part in parts:
+        token, separator, quality = part.partition(";")
+        if token.strip() not in allowed:
+            return "other"
+        if separator and (
+            transfer or not re.fullmatch(r"\s*q=(?:0(?:\.\d{1,3})?|1(?:\.0{1,3})?)", quality)
+        ):
+            return "other"
+    return ", ".join(parts)
+
+
 def trace_config(report):
-    """Record hosts/paths/status/timing, never headers, bodies or account IDs."""
+    """Record protocol metadata, never credentials, body values or URL queries."""
     trace = aiohttp.TraceConfig()
 
     async def started(session, context, params):
         context.started = time.monotonic()
+        context.accept_encoding = None
+        context.request_record = None
+
+    async def headers_sent(session, context, params):
+        # This event sees ClientRequest's actual headers, including auto headers.
+        context.accept_encoding = encoding_header(params.headers.get("Accept-Encoding"))
 
     async def ended(session, context, params):
-        report["requests"].append({
+        elapsed = round(time.monotonic() - context.started, 3)
+        headers = params.response.headers
+        length = headers.get("Content-Length")
+        record = {
             "host": params.url.host, "path": params.url.path, "status": params.response.status,
-            "seconds": round(time.monotonic() - context.started, 3),
-        })
+            "seconds": elapsed, "headers_seconds": elapsed,
+            "headers_received": True, "body_read_completed": False,
+            "accept_encoding": context.accept_encoding,
+            "content_encoding": encoding_header(headers.get("Content-Encoding")),
+            "transfer_encoding": encoding_header(headers.get("Transfer-Encoding"), transfer=True),
+            "content_length": int(length) if isinstance(length, str) and re.fullmatch(r"[0-9]{1,20}", length) else None,
+        }
+        context.request_record = record
+        report["requests"].append(record)
+
+    async def body_received(session, context, params):
+        # In pinned aiohttp, response.read()/text() emits this after a full read.
+        # A failed body read never reaches this event, even after HTTP 200 headers.
+        if context.request_record is not None:
+            context.request_record.update({
+                "body_read_completed": True, "body_bytes": len(params.chunk),
+                "seconds": round(time.monotonic() - context.started, 3),
+            })
 
     async def failed(session, context, params):
-        report["requests"].append({
+        details = {
             "host": params.url.host, "path": params.url.path, "error_type": type(params.exception).__name__,
+            "exception_chain": exception_type_chain(params.exception),
+            "accept_encoding": context.accept_encoding,
             "seconds": round(time.monotonic() - context.started, 3),
-        })
+        }
+        if context.request_record is None:
+            context.request_record = {"headers_received": False, "body_read_completed": False}
+            report["requests"].append(context.request_record)
+        context.request_record.update(details)
 
     trace.on_request_start.append(started)
+    trace.on_request_headers_sent.append(headers_sent)
     trace.on_request_end.append(ended)
+    trace.on_response_chunk_received.append(body_received)
     trace.on_request_exception.append(failed)
     return trace
 
@@ -85,7 +152,10 @@ def failure_summary(exc):
         category = "server_rejection"
     else:
         category = "unexpected"
-    result = {"status": "failed", "category": category, "error_type": type(exc).__name__}
+    result = {
+        "status": "failed", "category": category, "error_type": type(exc).__name__,
+        "exception_chain": exception_type_chain(exc),
+    }
     if isinstance(exc, MahaVidyutError):
         result["message"] = str(exc)
     cause = exc.__cause__
@@ -291,6 +361,8 @@ def print_summary(report):
         print(f"  {name}: {item['status'].upper()}" + (f" — {message}" if message else ""))
     for item in report["requests"]:
         outcome = f"HTTP {item['status']}" if "status" in item else item["error_type"]
+        if item.get("headers_received"):
+            outcome += ", body read complete" if item.get("body_read_completed") else " (headers only; body not confirmed)"
         print(f"  {item.get('host', '')}{item['path']}: {outcome}, {item['seconds']:.3f}s")
     if "metrics" in report:
         print(f"Sensor fields available: {report['metrics_available']}/{len(report['metrics'])}")

@@ -54,7 +54,9 @@ Dart true has bit 4 clear and false has bit 4 set. Checking this representation 
 - HTTP 401/403 and encrypted Unauthorized responses indicate session rejection. A bounded complete object-pool/assembly search identified saved refreshToken fields but no refresh-token request/read path. Version 0.2.1 uses the existing verified password Login route for optional recovery, with one login and one retry per refresh. It does not implement an unverified refresh-token route. Manual sign-in remains necessary when password storage is disabled, SMS verification is used, credentials are rejected, or the replacement session is also rejected.
 - HTTPS verification is enabled. Redirects are rejected so credential-bearing requests remain on the intended endpoint. Only authentication and reading operations are implemented.
 
-## Current verification status
+## Historical verification status
+
+The table below records the earlier checks through 3 November 2026. For the subsequent Live Data failure and matching-APK review, see the [5 November investigation](apk-review-2026-11-05.md).
 
 | Area | Evidence and status |
 | --- | --- |

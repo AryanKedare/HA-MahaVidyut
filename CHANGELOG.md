@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased — Standalone diagnostics
+
+- Distinguish received HTTP headers from successfully read response bodies, including HTTP 200 responses that fail during reading.
+- Record sanitized encoding/framing metadata and bounded exception class chains without credentials, raw responses or nested exception messages.
+- Document the matching-APK review and the provider's Live Data outage. The integration runtime remains at 0.2.5; this update does not restore unavailable provider measurements.
+
 ## 0.2.5 — Correct backup portal routing
 
 - Use `/api/<controller>/<action>` on `cportal.aeslami-mh.com` and omit the mobile `Channelid: Android` header there. The web portal does not use the primary host's `SmartMeterMH...API` service prefixes.

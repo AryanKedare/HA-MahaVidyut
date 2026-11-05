@@ -1,6 +1,7 @@
 """Standalone tester parity, credential handling and failure regressions."""
 
 import ast
+import asyncio
 import hashlib
 import json
 import subprocess
@@ -129,6 +130,30 @@ def fake_client(monkeypatch):
 @pytest.fixture
 def report():
     return {"checks": {}, "requests": []}
+
+
+def trace_parameters(path="/api/Account/Login"):
+    return SimpleNamespace(
+        url=SimpleNamespace(
+            host="cportal.aeslami-mh.com", path=path, query="PRIVATE-QUERY"
+        ),
+        headers={
+            "Accept-Encoding": "gzip, deflate, zstd",
+            "Authorization": "PRIVATE-TOKEN",
+            "Cookie": "PRIVATE-COOKIE",
+        },
+        body="PRIVATE-PASSWORD",
+        chunk=b"PRIVATE-RESPONSE",
+        response=SimpleNamespace(
+            status=200,
+            headers={
+                "Content-Encoding": "gzip",
+                "Content-Length": "123",
+                "Set-Cookie": "PRIVATE-SESSION",
+            },
+        ),
+        exception=RuntimeError("PRIVATE-ERROR"),
+    )
 
 
 def test_generated_snapshot_matches_current_client_and_sensor_paths():
@@ -356,22 +381,191 @@ async def test_probe_never_reads_credentials(monkeypatch, report):
 async def test_trace_never_records_body_headers_or_query(report):
     config = tester.trace_config(report)
     context = SimpleNamespace()
-    params = SimpleNamespace(
-        url=SimpleNamespace(
-            host="cportal.aeslami-mh.com",
-            path="/api/Account/Login",
-            query="PRIVATE-QUERY",
-        ),
-        headers={"Authorization": "PRIVATE-TOKEN"},
-        body="PRIVATE-PASSWORD",
-        response=SimpleNamespace(status=200),
-    )
+    params = trace_parameters()
     await config.on_request_start[0](None, context, params)
+    await config.on_request_headers_sent[0](None, context, params)
     await config.on_request_end[0](None, context, params)
-    encoded = json.dumps(report)
-    assert report["requests"][0]["status"] == 200
-    assert report["requests"][0]["host"] == "cportal.aeslami-mh.com"
-    assert "PRIVATE" not in encoded
+    row = report["requests"][0]
+    assert row["status"] == 200
+    assert row["host"] == "cportal.aeslami-mh.com"
+    assert row["accept_encoding"] == "gzip, deflate, zstd"
+    assert row["content_encoding"] == "gzip"
+    assert row["content_length"] == 123
+    assert row["transfer_encoding"] is None
+    assert row["headers_received"]
+    assert not row["body_read_completed"]
+    assert "body_bytes" not in row
+    await config.on_response_chunk_received[0](None, context, params)
+    assert row["body_read_completed"]
+    assert row["body_bytes"] == len(params.chunk)
+    assert row["seconds"] >= row["headers_seconds"]
+    assert "PRIVATE" not in json.dumps(report)
+
+
+@pytest.mark.asyncio
+async def test_trace_keeps_interleaved_same_path_requests_separate(report):
+    config = tester.trace_config(report)
+    first, second = SimpleNamespace(), SimpleNamespace()
+    first_params, second_params = trace_parameters(), trace_parameters()
+    second_params.headers["Accept-Encoding"] = "identity"
+    second_params.chunk = b"different-length"
+    for context, params in [(first, first_params), (second, second_params)]:
+        await config.on_request_start[0](None, context, params)
+        await config.on_request_headers_sent[0](None, context, params)
+    await config.on_request_end[0](None, second, second_params)
+    await config.on_request_end[0](None, first, first_params)
+    await config.on_response_chunk_received[0](None, first, first_params)
+    assert report["requests"][0]["accept_encoding"] == "identity"
+    assert not report["requests"][0]["body_read_completed"]
+    assert report["requests"][1]["body_bytes"] == len(first_params.chunk)
+    await config.on_response_chunk_received[0](None, second, second_params)
+    assert report["requests"][0]["body_bytes"] == len(second_params.chunk)
+
+
+@pytest.mark.asyncio
+async def test_trace_uses_headers_sent_and_sanitizes_protocol_values(report):
+    config = tester.trace_config(report)
+    context = SimpleNamespace()
+    params = trace_parameters()
+    params.headers["Accept-Encoding"] = "identity"
+    await config.on_request_start[0](None, context, params)
+    params.headers["Accept-Encoding"] = "gzip;q=1, deflate;q=0.5"
+    await config.on_request_headers_sent[0](None, context, params)
+    params.response.headers.update(
+        {
+            "Content-Encoding": "PRIVATE-ENCODING",
+            "Content-Length": "PRIVATE-LENGTH",
+            "Transfer-Encoding": "chunked",
+        }
+    )
+    await config.on_request_end[0](None, context, params)
+    row = report["requests"][0]
+    assert row["accept_encoding"] == "gzip;q=1, deflate;q=0.5"
+    assert row["content_encoding"] == "other"
+    assert row["content_length"] is None
+    assert row["transfer_encoding"] == "chunked"
+    assert "PRIVATE" not in json.dumps(report)
+
+
+@pytest.mark.asyncio
+async def test_trace_connection_failure_has_no_completed_response(report):
+    config = tester.trace_config(report)
+    context = SimpleNamespace()
+    params = trace_parameters()
+    await config.on_request_start[0](None, context, params)
+    await config.on_request_exception[0](None, context, params)
+    row = report["requests"][0]
+    assert not row["headers_received"]
+    assert not row["body_read_completed"]
+    assert row["accept_encoding"] is None
+    assert row["exception_chain"] == ["RuntimeError"]
+    assert "PRIVATE" not in json.dumps(report)
+
+
+def test_failure_summary_preserves_nested_cause_and_context_types():
+    cause = ValueError("PRIVATE-PAYLOAD")
+    middle = RuntimeError("PRIVATE-TRANSPORT")
+    middle.__context__ = cause
+    outer = tester.MahaVidyutConnectionError("MahaVidyut connection failed")
+    outer.__cause__ = middle
+    result = tester.failure_summary(outer)
+    assert result["cause_type"] == "RuntimeError"
+    assert result["exception_chain"] == [
+        "MahaVidyutConnectionError",
+        "RuntimeError",
+        "ValueError",
+    ]
+    assert "PRIVATE" not in json.dumps(result)
+
+
+def test_exception_type_chain_is_bounded_and_cycle_safe():
+    first, second = RuntimeError("PRIVATE-A"), ValueError("PRIVATE-B")
+    first.__cause__ = second
+    second.__context__ = first
+    assert tester.exception_type_chain(first) == [
+        "RuntimeError",
+        "ValueError",
+    ]
+    previous = first
+    for _ in range(10):
+        outer = RuntimeError("PRIVATE-C")
+        outer.__cause__ = previous
+        previous = outer
+    assert len(tester.exception_type_chain(previous)) == 6
+
+
+@pytest.mark.parametrize(
+    ("headers", "body", "error_type"),
+    [
+        (b"Content-Length: 2\r\n", b"ok", None),
+        (b"Content-Length: 100\r\n", b"short", "ContentLengthError"),
+        (
+            b"Content-Length: 7\r\nContent-Encoding: gzip\r\n",
+            b"invalid",
+            "ContentEncodingError",
+        ),
+    ],
+)
+async def test_actual_response_trace_distinguishes_body_failures(
+    report, headers, body, error_type
+):
+    """Exercise aiohttp's real trace timing with a local HTTP server."""
+
+    async def respond(reader, writer):
+        try:
+            await reader.readuntil(b"\r\n\r\n")
+            writer.write(
+                b"HTTP/1.1 200 OK\r\n" + headers + b"Connection: close\r\n\r\n" + body
+            )
+            await writer.drain()
+        finally:
+            writer.close()
+            await writer.wait_closed()
+
+    server = await asyncio.start_server(respond, "127.0.0.1", 0)
+    port = server.sockets[0].getsockname()[1]
+    async with server:
+        async with tester.aiohttp.ClientSession(
+            trace_configs=[tester.trace_config(report)],
+            timeout=tester.aiohttp.ClientTimeout(total=5),
+        ) as session:
+            async with session.get(f"http://127.0.0.1:{port}/api/test") as response:
+                if error_type:
+                    with pytest.raises(tester.aiohttp.ClientPayloadError) as caught:
+                        await response.read()
+                    failure = tester.failure_summary(caught.value)
+                    assert error_type in failure["exception_chain"]
+                else:
+                    assert await response.read() == body
+
+    row = report["requests"][0]
+    assert row["status"] == 200
+    assert row["headers_received"]
+    assert row["accept_encoding"] is not None
+    assert row["body_read_completed"] is (error_type is None)
+    if error_type:
+        assert "body_bytes" not in row
+    else:
+        assert row["body_bytes"] == len(body)
+
+
+def test_summary_does_not_call_header_only_200_a_complete_body(capsys):
+    tester.print_summary(
+        {
+            "result": "partial",
+            "checks": {},
+            "requests": [
+                {
+                    "path": "/api/Dashboard/MeterLiveData",
+                    "status": 200,
+                    "seconds": 0.032,
+                    "headers_received": True,
+                    "body_read_completed": False,
+                }
+            ],
+        }
+    )
+    assert "HTTP 200 (headers only; body not confirmed)" in capsys.readouterr().out
 
 
 def test_no_cross_feed_fallback_for_energy():

@@ -16,7 +16,7 @@ python -m pip install -r requirements-standalone.txt
 
 The requirements pin aiohttp 3.13.3, cryptography 46.0.5 and certifi 2026.7.22. HTTPS certificate verification remains enabled.
 
-The client starts with `https://cportal.esami-mhcca.com` and can fall back to `https://cportal.aeslami-mh.com` on connection failures, HTTP 408/5xx or unreadable encrypted responses. Each request tries each host at most once, with a 30-second timeout per host. A working host is reused for subsequent requests. Authentication and application rejections do not trigger failover. The backup uses the web gateway path `/api/` without a mobile channel header; see the [routing verification](web-portal-routing.md). Reports identify the primary and backup URLs and the host used for each request; request headers, bodies and URL queries are omitted.
+The client starts with `https://cportal.esami-mhcca.com` and can fall back to `https://cportal.aeslami-mh.com` on connection failures, HTTP 408/5xx or unreadable encrypted responses. Each request tries each host at most once, with a 30-second timeout per host. A working host is reused for subsequent requests. Authentication and application rejections do not trigger failover. The backup uses the web gateway path `/api/` without a mobile channel header; see the [routing verification](web-portal-routing.md). Reports identify the primary and backup URLs and the host used for each request. Headers are restricted to sanitized encoding/framing metadata; credentials, bodies and URL queries are omitted.
 
 ## Display readings and bill amounts
 
@@ -36,6 +36,8 @@ Enter the consumer/CA number and MahaVidyut password at the private terminal pro
 
 The tester supports 20 sensor fields. User-run tests on 14 October 2026 passed login and all six reading APIs, with **18/20 fields available**, including the three phase voltages, three phase currents and recent billing. The generic `voltage` and `current` fields had no usable numeric reading for that account. Use the phase readings when the service supplies them.
 
+On 5 November 2026, a later report passed login and five reading APIs, with **10/20 fields available**. Live Data failed, and the official portal showed the same section unavailable. The tester can report working summary readings during that outage; it cannot restore data missing from the provider. See the [APK and service review](apk-review-2026-11-05.md).
+
 ## Create a report without reading values
 
 ```bash
@@ -43,6 +45,8 @@ python maha_vidyut_test.py --report maha-report.json
 ```
 
 Without `--show-values`, the terminal prints `available` or `unavailable` for each metric. The report has `values_included: false` and omits each metric's `value`. It includes request paths, HTTP status/timing, known response field names, account-context availability, metric units/sources and error categories.
+
+For each request, `headers_received` means a response status and headers arrived. `body_read_completed` means aiohttp successfully read the full response body; it does not establish successful decryption, authentication or usable readings. A false value can mean the body failed or was not read, such as an HTTP 500 rejected immediately. Check-level results determine whether the API operation passed. Reports include sanitized `accept_encoding`, `content_encoding`, `transfer_encoding` and numeric `content_length`, plus exception class chains without their messages. An HTTP 200 with an incomplete body is labeled as headers only in the terminal.
 
 Both modes omit passwords, SMS codes, tokens, account identifiers and raw responses. A report created with `--show-values` contains actual meter and billing figures; use the default mode when sharing diagnostics without those figures.
 
