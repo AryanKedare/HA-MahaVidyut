@@ -34,6 +34,8 @@ INSTALL_FILES = (
     "docs/standalone-testing.md",
     "docs/apk-protocol.md",
     "docs/releasing.md",
+    "docs/web-portal-routing.md",
+    "docs/web-api-probe-2026-11-05.json",
     "docs/api-live-probe.json",
     "docs/api-retry-2026-10-14.json",
 ) + tuple((COMPONENT / name).as_posix() for name in RUNTIME_FILES)
@@ -41,6 +43,8 @@ TESTER_FILES = {
     "tools/maha_vidyut_test.py": "maha_vidyut_test.py",
     "tools/requirements-standalone.txt": "requirements-standalone.txt",
     "docs/standalone-testing.md": "README.md",
+    "docs/web-portal-routing.md": "web-portal-routing.md",
+    "docs/web-api-probe-2026-11-05.json": "web-api-probe-2026-11-05.json",
     "LICENSE": "LICENSE",
 }
 

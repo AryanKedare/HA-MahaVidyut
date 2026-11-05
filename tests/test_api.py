@@ -372,9 +372,16 @@ async def test_unavailable_primary_uses_backup_with_same_encrypted_request(failu
 
     assert [url for url, _ in session.calls] == [
         "https://cportal.esami-mhcca.com/SmartMeterMHDashboardAPI/api/Dashboard/GetLogHisDyn",
-        "https://cportal.aeslami-mh.com/SmartMeterMHDashboardAPI/api/Dashboard/GetLogHisDyn",
+        "https://cportal.aeslami-mh.com/api/Dashboard/GetLogHisDyn",
     ]
-    assert session.calls[0][1] == session.calls[1][1]
+    primary_kwargs = session.calls[0][1]
+    backup_kwargs = session.calls[1][1]
+    assert primary_kwargs["data"] == backup_kwargs["data"]
+    assert primary_kwargs["headers"]["Channelid"] == "Android"
+    assert "Channelid" not in backup_kwargs["headers"]
+    assert {k: v for k, v in primary_kwargs["headers"].items() if k != "Channelid"} == (
+        backup_kwargs["headers"]
+    )
     assert session.calls[1][1]["headers"]["Authorization"] == "Bearer test-token"
     assert session.calls[1][1]["allow_redirects"] is False
     assert "ssl" not in session.calls[1][1]
@@ -453,7 +460,7 @@ async def test_working_backup_is_reused_and_primary_can_recover():
     client = api.MahaVidyutClient(session, token="test-token")
     for value in range(1, 5):
         assert await client.async_get_log_history("test-ca") == {"reading": value}
-    assert [url.split("/SmartMeter", 1)[0] for url, _ in session.calls] == [
+    assert ["/".join(url.split("/")[:3]) for url, _ in session.calls] == [
         const.BASE_URL,
         const.BACKUP_URL,
         const.BACKUP_URL,
@@ -475,11 +482,9 @@ async def test_backup_login_keeps_host_and_replacement_session_for_readings():
     account = await client.async_login("test-ca", "synthetic-password")
     client.set_account(account)
     assert await client.async_get_recent_bill("test-ca") == {"bill": 1}
-    assert session.calls[1][0] == (
-        f"{const.BACKUP_URL}/SmartMeterMHAccountAPI/api/Account/Login"
-    )
+    assert session.calls[1][0] == (f"{const.BACKUP_URL}/api/Account/Login")
     assert session.calls[2][0] == (
-        f"{const.BACKUP_URL}/SmartMeterMHPaymentAPI/api/Payment/MsedclGETRecentBill"
+        f"{const.BACKUP_URL}/api/Payment/MsedclGETRecentBill"
     )
     assert all(
         "Authorization" not in kwargs["headers"] for _, kwargs in session.calls[:2]
@@ -492,8 +497,28 @@ async def test_explicit_backup_url_is_tried_first():
     session = FailoverSession(Response({"reading": 1}))
     client = api.MahaVidyutClient(session, const.BACKUP_URL + "/", token="test-token")
     await client.async_get_log_history("test-ca")
-    assert session.calls[0][0].startswith(const.BACKUP_URL + "/SmartMeter")
+    assert session.calls[0][0].startswith(const.BACKUP_URL + "/api/")
+    assert "Channelid" not in session.calls[0][1]["headers"]
     assert len(session.calls) == 1
+
+
+async def test_backup_anonymous_probe_matches_live_web_gateway_contract():
+    session = FailoverSession(
+        Response(
+            raw=encode_response(
+                {"data": None, "error": {"description": "Unauthorized"}}
+            )
+        )
+    )
+    client = api.MahaVidyutClient(session, const.BACKUP_URL)
+    with pytest.raises(api.MahaVidyutAuthenticationError):
+        await client.async_post("Dashboard/LatestIPData", {}, authenticated=False)
+
+    assert len(session.calls) == 1
+    url, kwargs = session.calls[0]
+    assert url == "https://cportal.aeslami-mh.com/api/Dashboard/LatestIPData"
+    assert kwargs["headers"] == {"Accept": "*/*", "Content-Type": "text/plain"}
+    assert kwargs["allow_redirects"] is False
 
 
 async def test_custom_url_does_not_forward_credentials_to_public_hosts():
