@@ -16,6 +16,8 @@ python -m pip install -r requirements-standalone.txt
 
 The requirements pin aiohttp 3.13.3, cryptography 46.0.5 and certifi 2026.7.22. HTTPS certificate verification remains enabled.
 
+The client starts with `https://cportal.esami-mhcca.com` and can fall back to `https://cportal.aeslami-mh.com` on connection failures, HTTP 408/5xx or unreadable encrypted responses. Each request tries each host at most once, with a 30-second timeout per host. A working host is reused for subsequent requests. Authentication and application rejections do not trigger failover. Reports identify the primary and backup URLs and the host used for each request; request headers, bodies and URL queries are omitted.
+
 ## Display readings and bill amounts
 
 ```bash

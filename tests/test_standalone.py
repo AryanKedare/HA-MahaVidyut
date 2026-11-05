@@ -28,6 +28,9 @@ class FakeClient:
     def __init__(self, session, **kwargs):
         self.kwargs = kwargs
 
+    def set_account(self, account):
+        self.account = account
+
     async def async_login(self, consumer, password):
         self.calls.append(("login", consumer, password))
         if self.failure == "login":
@@ -354,7 +357,11 @@ async def test_trace_never_records_body_headers_or_query(report):
     config = tester.trace_config(report)
     context = SimpleNamespace()
     params = SimpleNamespace(
-        url=SimpleNamespace(path="/api/Account/Login", query="PRIVATE-QUERY"),
+        url=SimpleNamespace(
+            host="cportal.aeslami-mh.com",
+            path="/api/Account/Login",
+            query="PRIVATE-QUERY",
+        ),
         headers={"Authorization": "PRIVATE-TOKEN"},
         body="PRIVATE-PASSWORD",
         response=SimpleNamespace(status=200),
@@ -363,6 +370,7 @@ async def test_trace_never_records_body_headers_or_query(report):
     await config.on_request_end[0](None, context, params)
     encoded = json.dumps(report)
     assert report["requests"][0]["status"] == 200
+    assert report["requests"][0]["host"] == "cportal.aeslami-mh.com"
     assert "PRIVATE" not in encoded
 
 

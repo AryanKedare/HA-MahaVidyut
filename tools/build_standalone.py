@@ -14,6 +14,7 @@ COMPONENT = ROOT / "custom_components" / "aesl_smart_meter"
 TARGET = ROOT / "tools" / "maha_vidyut_test.py"
 CONSTANTS = {
     "BASE_URL",
+    "BACKUP_URL",
     "ACCOUNT_SERVICE",
     "DASHBOARD_SERVICE",
     "PAYMENT_SERVICE",

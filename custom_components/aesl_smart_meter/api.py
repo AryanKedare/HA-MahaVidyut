@@ -15,6 +15,7 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 from .const import (
     ACCOUNT_SERVICE,
+    BACKUP_URL,
     BASE_URL,
     DASHBOARD_SERVICE,
     PAYMENT_SERVICE,
@@ -192,6 +193,12 @@ class MahaVidyutClient:
     ) -> None:
         self._session = session
         self._base_url = base_url.rstrip("/")
+        # Explicit custom URLs remain isolated from the public portal hosts.
+        self._base_urls = (
+            (BASE_URL, BACKUP_URL)
+            if self._base_url in (BASE_URL, BACKUP_URL)
+            else (self._base_url,)
+        )
         self._token = token
         self._client_id = client_id
 
@@ -228,26 +235,46 @@ class MahaVidyutClient:
             headers["Authorization"] = f"Bearer {self._token}"
             if self._client_id:
                 headers["clientID"] = self._client_id
-        try:
-            async with self._session.post(
-                f"{self._base_url}/{service}/api/{endpoint}",
-                data=encrypted_body,
-                headers=headers,
-                timeout=30,
-                allow_redirects=False,
-            ) as response:
-                if response.status in (401, 403):
-                    raise MahaVidyutAuthenticationError(
-                        "MahaVidyut authentication rejected"
-                    )
-                if response.status != 200:
-                    raise MahaVidyutConnectionError(
-                        f"MahaVidyut POST returned HTTP {response.status}"
-                    )
-                raw = await response.text()
-            return unwrap_response(raw)
-        except (TimeoutError, ClientError) as exc:
-            raise MahaVidyutConnectionError("MahaVidyut connection failed") from exc
+        # Snapshot the order because reading endpoints can run concurrently.
+        urls = (self._base_url,) + tuple(
+            url for url in self._base_urls if url != self._base_url
+        )
+        last_error: Exception | None = None
+        for base_url in urls:
+            try:
+                async with self._session.post(
+                    f"{base_url}/{service}/api/{endpoint}",
+                    data=encrypted_body,
+                    headers=headers,
+                    timeout=30,
+                    allow_redirects=False,
+                ) as response:
+                    if response.status in (401, 403):
+                        raise MahaVidyutAuthenticationError(
+                            "MahaVidyut authentication rejected"
+                        )
+                    if response.status != 200:
+                        error = MahaVidyutConnectionError(
+                            f"MahaVidyut POST returned HTTP {response.status}"
+                        )
+                        if response.status == 408 or 500 <= response.status < 600:
+                            last_error = error
+                            continue
+                        raise error
+                    raw = await response.text()
+            except (TimeoutError, ClientError) as exc:
+                last_error = exc
+                continue
+            try:
+                data = unwrap_response(raw)
+            except MahaVidyutProtocolError as exc:
+                last_error = exc
+                continue
+            self._base_url = base_url
+            return data
+        if isinstance(last_error, MahaVidyutError):
+            raise last_error
+        raise MahaVidyutConnectionError("MahaVidyut connection failed") from last_error
 
     async def async_login(self, login_id: str, password: str) -> MahaVidyutAccount:
         """Use the Maharashtra app's password login and discover meter context."""

@@ -35,7 +35,7 @@ from cryptography.hazmat.primitives.asymmetric import padding as asymmetric_padd
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 PROTOCOL_SOURCE_SHA256 = (
-    "f56cfca7030fc13d4a69ff30dd07ac1e260f0cc4db134939bc464e919ad09dcb"
+    "b92c6f2101fb77d6aba73c40f873fbe507f08c3b440f2139ec0f64f6b40885cc"
 )
 SENSOR_SOURCE_SHA256 = (
     "da572b56e7448668f609fd069d7c3e1bf36003bd8726ddc97a4a00cb9671cfd4"
@@ -43,6 +43,9 @@ SENSOR_SOURCE_SHA256 = (
 
 
 BASE_URL = "https://cportal.esami-mhcca.com"
+
+
+BACKUP_URL = "https://cportal.aeslami-mh.com"
 
 
 ACCOUNT_SERVICE = "SmartMeterMHAccountAPI"
@@ -231,6 +234,12 @@ class MahaVidyutClient:
     ) -> None:
         self._session = session
         self._base_url = base_url.rstrip("/")
+        # Explicit custom URLs remain isolated from the public portal hosts.
+        self._base_urls = (
+            (BASE_URL, BACKUP_URL)
+            if self._base_url in (BASE_URL, BACKUP_URL)
+            else (self._base_url,)
+        )
         self._token = token
         self._client_id = client_id
 
@@ -267,26 +276,46 @@ class MahaVidyutClient:
             headers["Authorization"] = f"Bearer {self._token}"
             if self._client_id:
                 headers["clientID"] = self._client_id
-        try:
-            async with self._session.post(
-                f"{self._base_url}/{service}/api/{endpoint}",
-                data=encrypted_body,
-                headers=headers,
-                timeout=30,
-                allow_redirects=False,
-            ) as response:
-                if response.status in (401, 403):
-                    raise MahaVidyutAuthenticationError(
-                        "MahaVidyut authentication rejected"
-                    )
-                if response.status != 200:
-                    raise MahaVidyutConnectionError(
-                        f"MahaVidyut POST returned HTTP {response.status}"
-                    )
-                raw = await response.text()
-            return unwrap_response(raw)
-        except (TimeoutError, ClientError) as exc:
-            raise MahaVidyutConnectionError("MahaVidyut connection failed") from exc
+        # Snapshot the order because reading endpoints can run concurrently.
+        urls = (self._base_url,) + tuple(
+            url for url in self._base_urls if url != self._base_url
+        )
+        last_error: Exception | None = None
+        for base_url in urls:
+            try:
+                async with self._session.post(
+                    f"{base_url}/{service}/api/{endpoint}",
+                    data=encrypted_body,
+                    headers=headers,
+                    timeout=30,
+                    allow_redirects=False,
+                ) as response:
+                    if response.status in (401, 403):
+                        raise MahaVidyutAuthenticationError(
+                            "MahaVidyut authentication rejected"
+                        )
+                    if response.status != 200:
+                        error = MahaVidyutConnectionError(
+                            f"MahaVidyut POST returned HTTP {response.status}"
+                        )
+                        if response.status == 408 or 500 <= response.status < 600:
+                            last_error = error
+                            continue
+                        raise error
+                    raw = await response.text()
+            except (TimeoutError, ClientError) as exc:
+                last_error = exc
+                continue
+            try:
+                data = unwrap_response(raw)
+            except MahaVidyutProtocolError as exc:
+                last_error = exc
+                continue
+            self._base_url = base_url
+            return data
+        if isinstance(last_error, MahaVidyutError):
+            raise last_error
+        raise MahaVidyutConnectionError("MahaVidyut connection failed") from last_error
 
     async def async_login(self, login_id: str, password: str) -> MahaVidyutAccount:
         """Use the Maharashtra app's password login and discover meter context."""
@@ -604,7 +633,7 @@ def get_credentials(args):
 
 
 def trace_config(report):
-    """Record paths/status/timing, never headers, bodies or account identifiers."""
+    """Record hosts/paths/status/timing, never headers, bodies or account IDs."""
     trace = aiohttp.TraceConfig()
 
     async def started(session, context, params):
@@ -613,6 +642,7 @@ def trace_config(report):
     async def ended(session, context, params):
         report["requests"].append(
             {
+                "host": params.url.host,
                 "path": params.url.path,
                 "status": params.response.status,
                 "seconds": round(time.monotonic() - context.started, 3),
@@ -622,6 +652,7 @@ def trace_config(report):
     async def failed(session, context, params):
         report["requests"].append(
             {
+                "host": params.url.host,
                 "path": params.url.path,
                 "error_type": type(params.exception).__name__,
                 "seconds": round(time.monotonic() - context.started, 3),
@@ -791,7 +822,7 @@ async def check_account(session, args, report):
         "meter_id_overridden": args.meter_id is not None,
         "phase_overridden": args.phase is not None,
     }
-    client = MahaVidyutClient(session, token=account.token, client_id=account.client_id)
+    client.set_account(account)
     jobs = {
         "history": client.async_get_log_history(consumer),
         "bill": client.async_get_recent_bill(consumer),
@@ -860,6 +891,7 @@ def result_code(report):
 async def run_checks(args):
     report = {
         "host": BASE_URL,
+        "backup_host": BACKUP_URL,
         "protocol_source_sha256": PROTOCOL_SOURCE_SHA256,
         "sensor_source_sha256": SENSOR_SOURCE_SHA256,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),  # noqa: UP017 (Python 3.10)
@@ -894,7 +926,9 @@ def print_summary(report):
         )
     for item in report["requests"]:
         outcome = f"HTTP {item['status']}" if "status" in item else item["error_type"]
-        print(f"  {item['path']}: {outcome}, {item['seconds']:.3f}s")
+        print(
+            f"  {item.get('host', '')}{item['path']}: {outcome}, {item['seconds']:.3f}s"
+        )
     if "metrics" in report:
         print(
             f"Sensor fields available: {report['metrics_available']}/{len(report['metrics'])}"

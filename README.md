@@ -69,7 +69,7 @@ Optionally enable **Save password for automatic sign-in** during setup or throug
 
 ## Cloud access and privacy
 
-Home Assistant needs internet access to the MahaVidyut service. Access tokens are stored locally. Your password is saved only when automatic sign-in is enabled; it is stored in the local configuration and may be included in backups.
+Home Assistant needs internet access to the MahaVidyut [primary](https://cportal.esami-mhcca.com/) and [backup](https://cportal.aeslami-mh.com/) servers. Access tokens are stored locally. Your password is saved only when automatic sign-in is enabled; it is stored in the local configuration and may be included in backups.
 
 ## Troubleshooting
 
