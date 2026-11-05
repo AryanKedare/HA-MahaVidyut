@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.4 — Backup portal URL
+
+- Add `https://cportal.aeslami-mh.com` as a backup for the existing `https://cportal.esami-mhcca.com` API host.
+- Try the alternate host on connection failures, HTTP 408/5xx or unreadable encrypted responses, then reuse the working host. Requests try each host at most once; authentication and application rejections retain normal sign-in/error handling.
+- Include the same fallback in the standalone tester and report the host used for each request.
+- Keep HTTPS verification and redirect rejection enabled. Explicit custom base URLs remain isolated from the public hosts.
+
 ## 0.2.3 — Energy statistics correction
 
 - Change **Energy consumed today** from `measurement` to `total_increasing`, so Home Assistant can use the daily resetting counter in the Energy dashboard without a `last_reset` attribute.

@@ -1,5 +1,6 @@
 """Offline cryptography and APK protocol regressions; no server access."""
 
+import asyncio
 import base64
 import json
 from unittest.mock import patch
@@ -335,3 +336,181 @@ async def test_renewed_session_replaces_token_and_client_headers(client_id):
         assert "clientID" not in headers
     else:
         assert headers["clientID"] == "new-client"
+
+
+class FailoverSession:
+    def __init__(self, *responses):
+        self.responses = iter(responses)
+        self.calls = []
+
+    def post(self, url, **kwargs):
+        self.calls.append((url, kwargs))
+        response = next(self.responses)
+        if isinstance(response, BaseException):
+            raise response
+        return response
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        TimeoutError(),
+        api.ClientError("PRIVATE-CONNECTION-DETAIL"),
+        Response(status=408),
+        Response(status=500),
+        Response(status=502),
+        Response(status=503),
+        Response(status=504),
+        Response(raw="<html>PRIVATE-MAINTENANCE-PAGE</html>"),
+    ],
+)
+async def test_unavailable_primary_uses_backup_with_same_encrypted_request(failure):
+    session = FailoverSession(failure, Response({"reading": 1}))
+    client = api.MahaVidyutClient(session, token="test-token", client_id="test-client")
+    with patch.object(api, "encrypt_request", return_value="encrypted-body") as encrypt:
+        assert await client.async_get_log_history("test-ca") == {"reading": 1}
+
+    assert [url for url, _ in session.calls] == [
+        "https://cportal.esami-mhcca.com/SmartMeterMHDashboardAPI/api/Dashboard/GetLogHisDyn",
+        "https://cportal.aeslami-mh.com/SmartMeterMHDashboardAPI/api/Dashboard/GetLogHisDyn",
+    ]
+    assert session.calls[0][1] == session.calls[1][1]
+    assert session.calls[1][1]["headers"]["Authorization"] == "Bearer test-token"
+    assert session.calls[1][1]["allow_redirects"] is False
+    assert "ssl" not in session.calls[1][1]
+    encrypt.assert_called_once()
+
+
+@pytest.mark.parametrize("status", [400, 401, 403, 404, 429, 302])
+async def test_auth_and_non_transient_http_errors_do_not_fail_over(status):
+    session = FailoverSession(Response(status=status, raw="PRIVATE-RESPONSE"))
+    error = (
+        api.MahaVidyutAuthenticationError
+        if status in (401, 403)
+        else api.MahaVidyutConnectionError
+    )
+    with pytest.raises(error) as caught:
+        await api.MahaVidyutClient(session, token="test-token").async_get_log_history(
+            "test-ca"
+        )
+    assert len(session.calls) == 1
+    assert "PRIVATE" not in str(caught.value)
+
+
+@pytest.mark.parametrize(
+    "description,error",
+    [
+        ("Unauthorized", api.MahaVidyutAuthenticationError),
+        ("Denied", api.MahaVidyutApiError),
+    ],
+)
+async def test_encrypted_account_rejections_do_not_fail_over(description, error):
+    session = FailoverSession(
+        Response(
+            raw=encode_response({"data": None, "error": {"description": description}})
+        )
+    )
+    with pytest.raises(error):
+        await api.MahaVidyutClient(session, token="test-token").async_get_log_history(
+            "test-ca"
+        )
+    assert len(session.calls) == 1
+
+
+@pytest.mark.parametrize(
+    "failures,error",
+    [
+        (
+            (TimeoutError(), api.ClientError("PRIVATE-DETAIL")),
+            api.MahaVidyutConnectionError,
+        ),
+        ((Response(status=503), Response(status=502)), api.MahaVidyutConnectionError),
+        (
+            (Response(raw="PRIVATE-A"), Response(raw="PRIVATE-B")),
+            api.MahaVidyutProtocolError,
+        ),
+    ],
+)
+async def test_both_hosts_failing_is_bounded_and_sanitized(failures, error):
+    session = FailoverSession(*failures)
+    with pytest.raises(error) as caught:
+        await api.MahaVidyutClient(session, token="test-token").async_get_log_history(
+            "test-ca"
+        )
+    assert len(session.calls) == 2
+    assert "PRIVATE" not in str(caught.value)
+
+
+async def test_working_backup_is_reused_and_primary_can_recover():
+    session = FailoverSession(
+        TimeoutError(),
+        Response({"reading": 1}),
+        Response({"reading": 2}),
+        TimeoutError(),
+        Response({"reading": 3}),
+        Response({"reading": 4}),
+    )
+    client = api.MahaVidyutClient(session, token="test-token")
+    for value in range(1, 5):
+        assert await client.async_get_log_history("test-ca") == {"reading": value}
+    assert [url.split("/SmartMeter", 1)[0] for url, _ in session.calls] == [
+        const.BASE_URL,
+        const.BACKUP_URL,
+        const.BACKUP_URL,
+        const.BACKUP_URL,
+        const.BASE_URL,
+        const.BASE_URL,
+    ]
+
+
+async def test_backup_login_keeps_host_and_replacement_session_for_readings():
+    session = FailoverSession(
+        TimeoutError(),
+        Response(
+            {"token": "new-token", "caNumber": "test-ca", "clientID": "new-client"}
+        ),
+        Response({"bill": 1}),
+    )
+    client = api.MahaVidyutClient(session, token="old-token")
+    account = await client.async_login("test-ca", "synthetic-password")
+    client.set_account(account)
+    assert await client.async_get_recent_bill("test-ca") == {"bill": 1}
+    assert session.calls[1][0] == (
+        f"{const.BACKUP_URL}/SmartMeterMHAccountAPI/api/Account/Login"
+    )
+    assert session.calls[2][0] == (
+        f"{const.BACKUP_URL}/SmartMeterMHPaymentAPI/api/Payment/MsedclGETRecentBill"
+    )
+    assert all(
+        "Authorization" not in kwargs["headers"] for _, kwargs in session.calls[:2]
+    )
+    assert session.calls[2][1]["headers"]["Authorization"] == "Bearer new-token"
+    assert session.calls[2][1]["headers"]["clientID"] == "new-client"
+
+
+async def test_explicit_backup_url_is_tried_first():
+    session = FailoverSession(Response({"reading": 1}))
+    client = api.MahaVidyutClient(session, const.BACKUP_URL + "/", token="test-token")
+    await client.async_get_log_history("test-ca")
+    assert session.calls[0][0].startswith(const.BACKUP_URL + "/SmartMeter")
+    assert len(session.calls) == 1
+
+
+async def test_custom_url_does_not_forward_credentials_to_public_hosts():
+    session = FailoverSession(TimeoutError())
+    client = api.MahaVidyutClient(
+        session, "https://custom.example/", token="test-token"
+    )
+    with pytest.raises(api.MahaVidyutConnectionError):
+        await client.async_get_log_history("test-ca")
+    assert len(session.calls) == 1
+    assert session.calls[0][0].startswith("https://custom.example/SmartMeter")
+
+
+async def test_cancelled_request_does_not_start_backup_request():
+    session = FailoverSession(asyncio.CancelledError())
+    with pytest.raises(asyncio.CancelledError):
+        await api.MahaVidyutClient(session, token="test-token").async_get_log_history(
+            "test-ca"
+        )
+    assert len(session.calls) == 1
