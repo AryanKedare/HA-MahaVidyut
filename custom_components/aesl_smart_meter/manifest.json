@@ -1,7 +1,7 @@
 {
   "domain": "aesl_smart_meter",
   "name": "MahaVidyut",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "documentation": "https://github.com/AryanKedare/HA-MahaVidyut",
   "codeowners": ["@AryanKedare"],
   "config_flow": true,

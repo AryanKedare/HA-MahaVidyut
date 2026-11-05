@@ -241,11 +241,17 @@ class MahaVidyutClient:
         )
         last_error: Exception | None = None
         for base_url in urls:
+            # The website gateway uses /api directly and no mobile channel header.
+            path = f"{service}/api/{endpoint}"
+            request_headers = headers
+            if base_url == BACKUP_URL:
+                path = f"api/{endpoint}"
+                request_headers = {k: v for k, v in headers.items() if k != "Channelid"}
             try:
                 async with self._session.post(
-                    f"{base_url}/{service}/api/{endpoint}",
+                    f"{base_url}/{path}",
                     data=encrypted_body,
-                    headers=headers,
+                    headers=request_headers,
                     timeout=30,
                     allow_redirects=False,
                 ) as response:

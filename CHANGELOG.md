@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.5 — Correct backup portal routing
+
+- Use `/api/<controller>/<action>` on `cportal.aeslami-mh.com` and omit the mobile `Channelid: Android` header there. The web portal does not use the primary host's `SmartMeterMH...API` service prefixes.
+- Keep the original mobile routes and headers for `cportal.esami-mhcca.com` and explicit custom mobile endpoints.
+- Add route/header regression coverage and verify the corrected backup endpoint with a live encrypted anonymous request. Account credentials were not used.
+- Regenerate the standalone tester and installation bundles. Existing entries can be retained; restart Home Assistant after replacing the integration files.
+
 ## 0.2.4 — Backup portal URL
 
 - Add `https://cportal.aeslami-mh.com` as a backup for the existing `https://cportal.esami-mhcca.com` API host.

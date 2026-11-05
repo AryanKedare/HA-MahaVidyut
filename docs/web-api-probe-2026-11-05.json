@@ -1,0 +1,30 @@
+{
+  "host": "https://cportal.esami-mhcca.com",
+  "backup_host": "https://cportal.aeslami-mh.com",
+  "protocol_source_sha256": "a5b7974d69f3fad3a28c8ca95c7d6fad4569ac915f28512e253247b7842c838c",
+  "sensor_source_sha256": "da572b56e7448668f609fd069d7c3e1bf36003bd8726ddc97a4a00cb9671cfd4",
+  "generated_at_utc": "2026-11-05T12:16:22.318249+00:00",
+  "mode": "probe_only",
+  "values_included": false,
+  "checks": {
+    "encrypted_authentication_probe": {
+      "status": "passed",
+      "message": "Encrypted response decoded; anonymous request rejected."
+    }
+  },
+  "requests": [
+    {
+      "host": "cportal.esami-mhcca.com",
+      "path": "/SmartMeterMHDashboardAPI/api/Dashboard/LatestIPData",
+      "status": 502,
+      "seconds": 0.235
+    },
+    {
+      "host": "cportal.aeslami-mh.com",
+      "path": "/api/Dashboard/LatestIPData",
+      "status": 200,
+      "seconds": 15.389
+    }
+  ],
+  "result": "passed"
+}

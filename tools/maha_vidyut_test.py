@@ -35,7 +35,7 @@ from cryptography.hazmat.primitives.asymmetric import padding as asymmetric_padd
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 PROTOCOL_SOURCE_SHA256 = (
-    "b92c6f2101fb77d6aba73c40f873fbe507f08c3b440f2139ec0f64f6b40885cc"
+    "a5b7974d69f3fad3a28c8ca95c7d6fad4569ac915f28512e253247b7842c838c"
 )
 SENSOR_SOURCE_SHA256 = (
     "da572b56e7448668f609fd069d7c3e1bf36003bd8726ddc97a4a00cb9671cfd4"
@@ -282,11 +282,17 @@ class MahaVidyutClient:
         )
         last_error: Exception | None = None
         for base_url in urls:
+            # The website gateway uses /api directly and no mobile channel header.
+            path = f"{service}/api/{endpoint}"
+            request_headers = headers
+            if base_url == BACKUP_URL:
+                path = f"api/{endpoint}"
+                request_headers = {k: v for k, v in headers.items() if k != "Channelid"}
             try:
                 async with self._session.post(
-                    f"{base_url}/{service}/api/{endpoint}",
+                    f"{base_url}/{path}",
                     data=encrypted_body,
-                    headers=headers,
+                    headers=request_headers,
                     timeout=30,
                     allow_redirects=False,
                 ) as response:
