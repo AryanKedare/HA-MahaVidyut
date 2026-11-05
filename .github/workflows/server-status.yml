@@ -1,0 +1,36 @@
+name: Server connection
+
+on:
+  schedule:
+    - cron: "17,47 * * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/server-status.yml
+      - tools/check_server_status.py
+      - tools/maha_vidyut_test.py
+      - tools/requirements-standalone.txt
+
+permissions:
+  contents: read
+
+concurrency:
+  group: server-connection-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  connection:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: tools/requirements-standalone.txt
+      - name: Install probe dependencies
+        run: python -m pip install -r tools/requirements-standalone.txt
+      - name: Check primary API connection
+        run: python -m tools.check_server_status
