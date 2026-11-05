@@ -1,6 +1,7 @@
 # MahaVidyut for Home Assistant
 
 [![Tests](https://github.com/AryanKedare/HA-MahaVidyut/actions/workflows/tests.yml/badge.svg)](https://github.com/AryanKedare/HA-MahaVidyut/actions/workflows/tests.yml)
+[![Primary server connection](https://github.com/AryanKedare/HA-MahaVidyut/actions/workflows/server-status.yml/badge.svg?branch=main)](https://github.com/AryanKedare/HA-MahaVidyut/actions/workflows/server-status.yml)
 [![GitHub issues](https://img.shields.io/github/issues/AryanKedare/HA-MahaVidyut.svg)](https://github.com/AryanKedare/HA-MahaVidyut/issues)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
@@ -70,6 +71,8 @@ Optionally enable **Save password for automatic sign-in** during setup or throug
 ## Cloud access and privacy
 
 Home Assistant needs internet access to the MahaVidyut service. Access tokens are stored locally. Your password is saved only when automatic sign-in is enabled; it is stored in the local configuration and may be included in backups.
+
+The server badge shows the latest API connection check for [cportal.esami-mhcca.com](https://cportal.esami-mhcca.com/), scheduled every 30 minutes without account credentials. Click it for the result and check time. Account sign-in and live-meter readings have separate availability.
 
 ## Troubleshooting
 
